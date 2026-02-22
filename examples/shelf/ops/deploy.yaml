@@ -1,0 +1,33 @@
+schemaVersion: 1
+kind: command
+metadata:
+  name: Deploy
+  slug: deploy
+  description: Deploy a service to a target environment
+  tags:
+    - ops
+    - deploy
+args:
+  positional:
+    - name: service
+      description: Service name to deploy
+      required: true
+  flags:
+    - name: env
+      short: e
+      type: string
+      description: Target environment
+      default: staging
+    - name: dry-run
+      short: "n"
+      type: bool
+      description: Print what would happen without executing
+defaults:
+  shell: /bin/bash
+  timeout: 30s
+steps:
+  - name: deploy
+    run:
+      - echo "Deploying {{.args.service}} to {{.args.env}}..."
+      - echo "Image: {{.args.service}}:latest"
+      - echo "Deploy complete."

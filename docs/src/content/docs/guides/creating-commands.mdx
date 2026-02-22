@@ -1,0 +1,174 @@
+---
+title: Creating Commands
+description: How to author command specs with args, flags, steps, and policies.
+---
+
+Commands are defined as YAML or JSON files validated against a JSON Schema. This guide covers all the fields available in a command spec.
+
+## Scaffold a new command
+
+```bash
+my cli init deploy
+```
+
+This creates `deploy/command.yaml` with a starter template. Use `--force` to overwrite an existing file.
+
+## Spec structure
+
+Every command spec has these top-level fields:
+
+```yaml
+schemaVersion: 1
+kind: command
+
+metadata:
+  name: deploy
+  slug: deploy
+  description: Deploy application to an environment
+  tags: [ops, deploy]
+
+args:
+  positional:
+    - name: environment
+      description: Target environment
+      required: true
+  flags:
+    - name: dry-run
+      short: n
+      type: bool
+      description: Preview without applying
+
+defaults:
+  shell: /bin/bash
+  timeout: 5m
+  env:
+    APP_NAME: myapp
+
+steps:
+  - name: validate
+    run:
+      - echo "Deploying to {{.args.environment}}..."
+  - name: deploy
+    run:
+      - ./deploy.sh {{.args.environment}}
+
+policy:
+  requireConfirmation: true
+  allowedExecutables: [/bin/bash, /bin/echo]
+```
+
+## Metadata
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Human-readable name |
+| `slug` | Yes | URL-safe identifier. Must match `^[a-z][a-z0-9-]*$` |
+| `description` | No | Short description of what the command does |
+| `tags` | No | Array of tags for organization |
+
+## Arguments
+
+### Positional arguments
+
+Positional args are parsed in order from the command line:
+
+```yaml
+args:
+  positional:
+    - name: environment
+      description: Target environment
+      required: true
+    - name: version
+      description: Version to deploy
+      required: false
+```
+
+### Flags
+
+Named flags with optional short aliases:
+
+```yaml
+args:
+  flags:
+    - name: verbose
+      short: v
+      type: bool
+      description: Enable verbose output
+    - name: replicas
+      type: int
+      default: "3"
+      description: Number of replicas
+    - name: region
+      type: string
+      default: us-east-1
+      description: AWS region
+```
+
+**Supported flag types:** `string` (default), `bool`, `int`.
+
+## Defaults
+
+Set defaults that apply to all steps:
+
+```yaml
+defaults:
+  shell: /bin/bash    # Default shell for all steps
+  timeout: 30s        # Default timeout for all steps
+  env:                # Default env vars for all steps
+    APP_NAME: myapp
+```
+
+## Steps
+
+Each step runs one or more shell commands:
+
+```yaml
+steps:
+  - name: build
+    run:
+      - npm ci
+      - npm run build
+    timeout: 2m
+    env:
+      NODE_ENV: production
+  - name: deploy
+    run:
+      - ./deploy.sh
+    shell: /bin/bash
+    continueOnError: false
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Step identifier |
+| `run` | Yes | Array of shell commands to execute |
+| `env` | No | Step-specific environment variables |
+| `timeout` | No | Override the default timeout |
+| `shell` | No | Override the default shell |
+| `continueOnError` | No | If `true`, continue to next step on failure |
+
+## Policy
+
+Control execution behavior:
+
+```yaml
+policy:
+  requireConfirmation: true
+  allowedExecutables: [/bin/bash, /usr/bin/curl]
+```
+
+- **`requireConfirmation`** — prompts the user for confirmation before running
+- **`allowedExecutables`** — restricts which binaries can be invoked by steps
+
+## Running directly from a file
+
+You can run a spec file directly without pushing:
+
+```bash
+my cli run -f command.yaml -- production
+```
+
+## Next steps
+
+- [Publishing Commands](/guides/publishing-commands/) — push to the registry
+- [Template Variables](/guides/template-variables/) — use dynamic values in commands

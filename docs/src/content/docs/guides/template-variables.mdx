@@ -1,0 +1,98 @@
+---
+title: Template Variables
+description: Use Go templates for dynamic values in command specs.
+---
+
+Step `run` lines and `env` values in command specs are rendered as Go templates before execution. This lets you inject arguments, environment variables, and system info into your commands.
+
+## Available variables
+
+| Variable | Description |
+|----------|-------------|
+| `{{.args.X}}` | Argument value (positional or flag) by name |
+| `{{.env.X}}` | Environment variable value |
+| `{{.cwd}}` | Current working directory |
+| `{{.home}}` | User's home directory |
+
+## Using arguments
+
+```yaml
+args:
+  positional:
+    - name: environment
+      required: true
+  flags:
+    - name: replicas
+      type: int
+      default: "3"
+
+steps:
+  - name: deploy
+    run:
+      - echo "Deploying to {{.args.environment}} with {{.args.replicas}} replicas"
+```
+
+Running `my cli run deploy -- production --replicas 5` renders the command as:
+
+```
+Deploying to production with 5 replicas
+```
+
+## Using environment variables
+
+Reference both default env vars and system environment variables:
+
+```yaml
+defaults:
+  env:
+    GREETING: Hello
+
+steps:
+  - name: greet
+    run:
+      - echo "{{.env.GREETING}} from {{.env.USER}}"
+```
+
+## Using system paths
+
+```yaml
+steps:
+  - name: info
+    run:
+      - echo "Running from {{.cwd}}"
+      - echo "Home is {{.home}}"
+      - cat {{.home}}/.config/app.yaml
+```
+
+## Go template syntax
+
+Since these are Go templates, you can use standard Go template functions:
+
+```yaml
+steps:
+  - name: example
+    run:
+      # Conditionals
+      - '{{if .args.verbose}}set -x{{end}}'
+      # Default values
+      - echo "Region: {{or .args.region "us-east-1"}}"
+```
+
+## Environment in steps
+
+You can also use templates in step-level `env` values:
+
+```yaml
+steps:
+  - name: build
+    env:
+      DEPLOY_TARGET: "{{.args.environment}}"
+      CONFIG_PATH: "{{.home}}/.config/deploy.yaml"
+    run:
+      - ./build.sh
+```
+
+## Next steps
+
+- [Creating Commands](/guides/creating-commands/) — full spec authoring guide
+- [Spec Format Reference](/reference/spec-format/) — complete field reference

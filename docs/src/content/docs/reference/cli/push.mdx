@@ -1,0 +1,42 @@
+---
+title: my cli push
+description: Validate and publish a command spec to the registry.
+---
+
+```bash
+my cli push [flags]
+```
+
+Validates the spec against the JSON Schema, then creates or updates the command on the server and publishes a new version.
+
+## Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Spec file to push (default: `command.json`) |
+| `--message` | `-m` | Version message |
+| `--dir` | | Push all spec files found in a directory tree |
+
+## Examples
+
+```bash
+# Push a single file
+my cli push -f command.yaml
+
+# Push with a version message
+my cli push -f command.yaml -m "Add --dry-run flag"
+
+# Push all specs in a directory
+my cli push --dir ./commands/
+```
+
+## Behavior
+
+- Validates the spec against the JSON Schema before pushing
+- Creates a new command if the slug doesn't exist, otherwise updates it
+- Each push creates a new auto-incremented version (v1, v2, v3...)
+- With `--dir`, recursively finds all `.yaml`, `.yml`, and `.json` spec files
+
+## Requires
+
+Authentication — you must be logged in via `my cli login`.

@@ -1,0 +1,109 @@
+---
+title: Shelves & Libraries
+description: Share and use curated command sets via git-backed shelves.
+---
+
+A **shelf** is a git repository that provides one or more command **libraries**. Shelves let you share and use curated sets of commands without needing an account or API server — just a git URL.
+
+## How it works
+
+1. `my shelf add <url>` clones the repo and reads its shelf manifest (`shelf.yaml`)
+2. Each library in the manifest maps to a directory of command spec files
+3. Commands become available as `my <library> <slug>` (e.g., `my ops deploy`)
+4. `my cli sync` (or `my shelf update`) pulls the latest changes from all shelf repos
+
+## Add a shelf
+
+```bash
+my shelf add https://github.com/user/example-shelf.git
+```
+
+### Specify a branch or tag
+
+```bash
+my shelf add https://github.com/user/example-shelf.git --ref v1.0
+```
+
+### Custom name
+
+```bash
+my shelf add https://github.com/user/example-shelf.git --name my-tools
+```
+
+## Run shelf commands
+
+After adding a shelf, its commands are available as top-level subcommands:
+
+```bash
+my ops deploy -- production
+my k8s logs -- my-pod
+```
+
+## Manage shelves
+
+```bash
+my shelf list              # List all added shelves
+my shelf list --json       # Output as JSON
+my shelf update            # Update all shelves
+my shelf update my-tools   # Update a specific shelf
+my shelf remove my-tools   # Remove a shelf
+```
+
+## Create your own shelf
+
+### Directory layout
+
+```
+my-shelf/
+  shelf.yaml            # Manifest (required)
+  ops/                  # Library directory
+    deploy.yaml         # Command spec (slug: "deploy")
+    status.yaml         # Command spec (slug: "status")
+  k8s/
+    logs.yaml           # Command spec (slug: "logs")
+```
+
+### Manifest format (`shelf.yaml`)
+
+```yaml
+shelfVersion: 1
+name: my-shelf
+description: A collection of useful commands
+libraries:
+  ops:
+    name: Operations
+    description: Deployment and operations commands
+    path: ops
+  k8s:
+    name: Kubernetes
+    description: Kubernetes helper commands
+    path: k8s
+```
+
+- `shelfVersion` must be `1`
+- Each key in `libraries` is the library slug (must match `^[a-z][a-z0-9-]*$`)
+- `path` points to a directory containing command spec files
+- Each spec file's `metadata.slug` must match the filename (minus extension)
+
+`shelf.yml` and `shelf.json` are also accepted for backward compatibility.
+
+### Storage
+
+- Shelf repos are cloned to `~/.my/shelves/repos/` (path derived from URL)
+- The shelf registry lives at `~/.my/shelves/shelves.json`
+
+## API-hosted libraries
+
+In addition to shelves, you can subscribe to libraries hosted on the API:
+
+```bash
+my cli subscribe <library>    # Subscribe (auto-syncs)
+my cli unsubscribe <library>  # Unsubscribe
+```
+
+Subscribed library commands are also available as `my <library> <command>`.
+
+## Next steps
+
+- [Shelf Manifest Reference](/reference/shelf-manifest/) — full manifest format
+- [shelf add](/reference/shelf/add/) — complete CLI reference

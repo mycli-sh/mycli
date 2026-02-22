@@ -1,0 +1,60 @@
+---
+title: Shelf Manifest
+description: Reference for the shelf.yaml manifest format.
+---
+
+Every shelf repository must have a manifest file at its root. The accepted filenames are `shelf.yaml` (preferred), `shelf.yml`, or `shelf.json`.
+
+## Full example
+
+```yaml
+shelfVersion: 1
+name: my-shelf
+description: A collection of useful commands
+libraries:
+  ops:
+    name: Operations
+    description: Deployment and operations commands
+    path: ops
+  k8s:
+    name: Kubernetes
+    description: Kubernetes helper commands
+    path: k8s
+```
+
+## Fields
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `shelfVersion` | Yes | `integer` | Must be `1` |
+| `name` | Yes | `string` | Shelf name |
+| `description` | No | `string` | Shelf description |
+| `libraries` | Yes | `object` | Map of library slug to library definition |
+
+## Library definition
+
+Each key in `libraries` is the library slug, which must match `^[a-z][a-z0-9-]*$`.
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `name` | Yes | `string` | Human-readable library name |
+| `description` | No | `string` | Library description |
+| `path` | Yes | `string` | Relative path to the directory containing command spec files |
+
+## Directory layout
+
+```
+my-shelf/
+  shelf.yaml            # Manifest
+  ops/                  # Library directory (path: ops)
+    deploy.yaml         # Command spec (slug: "deploy")
+    status.yaml         # Command spec (slug: "status")
+  k8s/                  # Library directory (path: k8s)
+    logs.yaml           # Command spec (slug: "logs")
+```
+
+## Spec file requirements
+
+- Each `.yaml`, `.yml`, or `.json` file in a library directory must be a valid command spec
+- The `metadata.slug` in each spec must match the filename (minus extension)
+- Specs are validated against the same JSON Schema used by `my cli push`

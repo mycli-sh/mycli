@@ -1,0 +1,12 @@
+shelfVersion: 1
+name: example-shelf
+description: An example shelf with ops and k8s command libraries
+libraries:
+  ops:
+    name: Operations
+    description: Deployment and operations commands
+    path: ops
+  k8s:
+    name: Kubernetes
+    description: Kubernetes helper commands
+    path: k8s

@@ -1,0 +1,56 @@
+---
+title: Publishing Commands
+description: Push command specs to the registry and manage versions.
+---
+
+Once you've authored a command spec, push it to the registry to make it available across machines.
+
+## Prerequisites
+
+You must be logged in:
+
+```bash
+my cli login
+```
+
+## Push a single command
+
+```bash
+my cli push -f command.yaml
+```
+
+The CLI validates the spec against the JSON Schema, then creates or updates the command on the server and publishes a new version.
+
+### With a version message
+
+```bash
+my cli push -f command.yaml -m "Add --dry-run flag"
+```
+
+## Push a directory of commands
+
+To batch-push all spec files found in a directory tree:
+
+```bash
+my cli push --dir ./commands/
+```
+
+This recursively finds all `.yaml`, `.yml`, and `.json` spec files and pushes each one.
+
+## Versioning
+
+Each push creates a new version. Versions are auto-incremented integers (v1, v2, v3...). The latest version is always used when running a command.
+
+## Validation
+
+Before pushing, the CLI validates your spec against the JSON Schema at `pkg/spec/schema/command-v1.schema.json`. If validation fails, you'll see specific error messages explaining what needs to be fixed.
+
+Common validation errors:
+- Missing required fields (`schemaVersion`, `kind`, `metadata.name`, `metadata.slug`, `steps`)
+- Invalid slug format (must match `^[a-z][a-z0-9-]*$`)
+- Empty steps array
+
+## Next steps
+
+- [Running Commands](/guides/running-commands/) — sync and run your published commands
+- [Spec Format Reference](/reference/spec-format/) — full spec field reference

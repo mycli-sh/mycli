@@ -1,0 +1,46 @@
+---
+import InstallCommand from "./InstallCommand.astro";
+---
+
+<section class="relative overflow-hidden pt-32 pb-20">
+  <!-- Gradient background glow -->
+  <div class="pointer-events-none absolute inset-0 overflow-hidden">
+    <div class="absolute top-0 left-1/2 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/10 blur-3xl"></div>
+  </div>
+
+  <div class="relative mx-auto max-w-4xl px-6 text-center">
+    <div class="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-4 py-1.5 text-sm text-zinc-400">
+      <span class="inline-block h-2 w-2 rounded-full bg-violet-500"></span>
+      Commands as code
+    </div>
+
+    <h1 class="text-5xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl">
+      Define, publish, and run
+      <span class="bg-gradient-to-r from-violet-400 to-violet-500 bg-clip-text text-transparent">
+        CLI commands
+      </span>
+    </h1>
+
+    <p class="mx-auto mt-6 max-w-2xl text-lg text-zinc-400 sm:text-xl">
+      Author commands as YAML specs with args, flags, templates, and multi-step workflows.
+      Push to a registry, sync across machines, and run from anywhere.
+    </p>
+
+    <InstallCommand />
+
+    <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+      <a
+        href="https://docs.mycli.sh/getting-started/quickstart"
+        class="rounded-lg bg-violet-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+      >
+        Get Started
+      </a>
+      <a
+        href="https://app.mycli.sh"
+        class="rounded-lg border border-zinc-700 bg-zinc-900 px-6 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white"
+      >
+        Browse Libraries
+      </a>
+    </div>
+  </div>
+</section>

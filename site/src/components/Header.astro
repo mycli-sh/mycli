@@ -1,0 +1,30 @@
+---
+const links = [
+  { label: "Docs", href: "https://docs.mycli.sh" },
+  { label: "GitHub", href: "https://github.com/mycli-sh/mycli" },
+];
+---
+
+<header class="fixed top-0 z-50 w-full border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl">
+  <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+    <a href="/" class="flex items-center gap-2">
+      <img src="/logo.svg" alt="mycli" class="h-7" />
+    </a>
+    <div class="flex items-center gap-6">
+      {links.map((link) => (
+        <a
+          href={link.href}
+          class="text-sm text-zinc-400 transition-colors hover:text-zinc-100"
+        >
+          {link.label}
+        </a>
+      ))}
+      <a
+        href="https://app.mycli.sh"
+        class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+      >
+        Open App
+      </a>
+    </div>
+  </nav>
+</header>

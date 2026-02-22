@@ -1,0 +1,82 @@
+---
+title: Quickstart
+description: Create, publish, and run your first command in under a minute.
+---
+
+This guide walks you through creating a simple command, pushing it to the registry, and running it.
+
+## 1. Log in
+
+mycli uses email-based magic links for authentication:
+
+```bash
+my cli login
+```
+
+Enter your email address and click the verification link sent to your inbox. After verification, the CLI stores your credentials securely in the OS keyring.
+
+## 2. Create a command
+
+Scaffold a new command spec:
+
+```bash
+my cli init hello
+```
+
+This creates a `hello/command.yaml` file with a starter template. Edit it:
+
+```yaml
+schemaVersion: 1
+kind: command
+
+metadata:
+  name: hello
+  slug: hello
+  description: Say hello
+
+args:
+  positional:
+    - name: name
+      description: Who to greet
+      required: true
+
+steps:
+  - name: greet
+    run:
+      - echo "Hello, {{.args.name}}!"
+```
+
+## 3. Push to the registry
+
+```bash
+my cli push -f hello/command.yaml
+```
+
+The CLI validates your spec against the JSON Schema and publishes it to the server.
+
+## 4. Sync and run
+
+```bash
+my cli sync
+my cli run hello -- World
+```
+
+Output:
+```
+Hello, World!
+```
+
+## Using shelves (no account needed)
+
+You can also use commands from git-backed shelves without an account:
+
+```bash
+my shelf add https://github.com/user/example-shelf.git
+my <library> <command>
+```
+
+## Next steps
+
+- [Creating Commands](/guides/creating-commands/) — learn the full spec format
+- [Template Variables](/guides/template-variables/) — use dynamic values in your commands
+- [Shelves & Libraries](/guides/shelves-and-libraries/) — share commands via git repos

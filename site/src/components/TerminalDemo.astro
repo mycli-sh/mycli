@@ -1,0 +1,29 @@
+<section class="py-20">
+  <div class="mx-auto max-w-4xl px-6">
+    <div class="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-violet-500/5">
+      <!-- Terminal title bar -->
+      <div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
+        <div class="h-3 w-3 rounded-full bg-zinc-700"></div>
+        <div class="h-3 w-3 rounded-full bg-zinc-700"></div>
+        <div class="h-3 w-3 rounded-full bg-zinc-700"></div>
+        <span class="ml-2 text-xs text-zinc-500 font-mono">terminal</span>
+      </div>
+      <!-- Terminal body -->
+      <div class="p-6 font-mono text-sm leading-relaxed">
+        <div class="text-zinc-500"># Create a new command spec</div>
+        <div><span class="text-violet-400">$</span> <span class="text-zinc-200">my cli init deploy</span></div>
+        <div class="text-zinc-500">Created deploy/command.yaml</div>
+        <div class="mt-4 text-zinc-500"># Edit your command, then push it</div>
+        <div><span class="text-violet-400">$</span> <span class="text-zinc-200">my cli push -f deploy/command.yaml</span></div>
+        <div class="text-zinc-500">Pushed deploy v1 <span class="text-emerald-400">&#10003;</span></div>
+        <div class="mt-4 text-zinc-500"># Sync and run from any machine</div>
+        <div><span class="text-violet-400">$</span> <span class="text-zinc-200">my cli sync</span></div>
+        <div class="text-zinc-500">Synced 12 commands from 3 libraries</div>
+        <div class="mt-4"><span class="text-violet-400">$</span> <span class="text-zinc-200">my cli run deploy -- production</span></div>
+        <div class="text-zinc-500">Running deploy (v1)...</div>
+        <div class="text-emerald-400">Deployed to production successfully</div>
+        <div class="mt-4"><span class="text-violet-400">$</span> <span class="animate-pulse text-zinc-400">|</span></div>
+      </div>
+    </div>
+  </div>
+</section>

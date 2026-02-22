@@ -1,0 +1,65 @@
+---
+title: API Endpoints
+description: HTTP API endpoint reference.
+---
+
+The mycli API server provides REST endpoints for authentication, command management, and catalog syncing.
+
+## Public endpoints (no auth)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/auth/device/start` | Start device auth flow |
+| `POST` | `/v1/auth/device/token` | Poll for device token |
+| `POST` | `/v1/auth/refresh` | Refresh access token |
+| `GET` | `/v1/auth/verify` | Verify magic link |
+| `GET` | `/device` | Device verification page |
+| `POST` | `/device` | Device verification submit |
+| `GET` | `/health` | Health check |
+
+## Authenticated endpoints
+
+All authenticated endpoints require a valid JWT in the `Authorization: Bearer <token>` header.
+
+### User
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/me` | Current user info |
+
+### Commands
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/commands` | Create a command |
+| `GET` | `/v1/commands` | List commands |
+| `GET` | `/v1/commands/{id}` | Get a command |
+| `DELETE` | `/v1/commands/{id}` | Delete a command (soft delete) |
+| `POST` | `/v1/commands/{id}/versions` | Publish a version |
+| `GET` | `/v1/commands/{id}/versions/{version}` | Get a specific version |
+
+### Catalog
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/catalog` | Get synced catalog (supports `ETag` / `If-None-Match`) |
+
+### Libraries
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/libraries` | List libraries |
+| `GET` | `/v1/libraries/{slug}` | Get a library |
+| `POST` | `/v1/libraries/{slug}/subscribe` | Subscribe to a library |
+| `DELETE` | `/v1/libraries/{slug}/subscribe` | Unsubscribe from a library |
+
+## ID format
+
+All entity IDs use prefixed UUIDs:
+
+| Prefix | Entity |
+|--------|--------|
+| `usr_` | User |
+| `cmd_` | Command |
+| `cv_` | Command version |
+| `ml_` | Mailing list / library |

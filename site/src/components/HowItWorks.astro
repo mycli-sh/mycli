@@ -1,0 +1,77 @@
+---
+const steps = [
+  {
+    number: "1",
+    title: "Define",
+    description: "Write a command spec in YAML with arguments, flags, and templated steps.",
+    code: `metadata:
+  name: greet
+  slug: greet
+  description: Greet someone
+
+args:
+  positional:
+    - name: name
+      required: true
+
+steps:
+  - name: greet
+    run:
+      - echo 'Hello, {{.args.name}}!'`,
+  },
+  {
+    number: "2",
+    title: "Publish",
+    description: "Push your command to the registry to share it across machines.",
+    code: `$ my cli push -f command.yaml
+Pushed greet v1 ✓
+
+$ my cli push --dir ./commands/
+Pushed deploy v3 ✓
+Pushed backup v1 ✓
+Pushed status v2 ✓`,
+  },
+  {
+    number: "3",
+    title: "Run",
+    description: "Sync your catalog and run commands from anywhere with full arg parsing.",
+    code: `$ my cli sync
+Synced 4 commands
+
+$ my cli run greet -- World
+Hello, World!
+
+$ my cli run deploy -- production
+Running deploy (v3)...
+Deployed to production ✓`,
+  },
+];
+---
+
+<section id="how-it-works" class="py-20">
+  <div class="mx-auto max-w-6xl px-6">
+    <div class="text-center">
+      <h2 class="text-3xl font-bold text-white sm:text-4xl">How it works</h2>
+      <p class="mt-4 text-lg text-zinc-400">
+        Three steps from definition to execution.
+      </p>
+    </div>
+
+    <div class="mt-16 grid gap-8 lg:grid-cols-3">
+      {steps.map((step) => (
+        <div class="group">
+          <div class="mb-4 flex items-center gap-3">
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/20 text-sm font-bold text-violet-400">
+              {step.number}
+            </span>
+            <h3 class="text-xl font-semibold text-white">{step.title}</h3>
+          </div>
+          <p class="mb-4 text-sm text-zinc-400">{step.description}</p>
+          <div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+            <pre class="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-zinc-300"><code>{step.code}</code></pre>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

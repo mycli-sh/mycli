@@ -1,0 +1,30 @@
+---
+title: my cli history
+description: Show run history.
+---
+
+```bash
+my cli history [flags]
+```
+
+Displays the history of command runs.
+
+## Flags
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--last` | `-n` | `20` | Number of entries to show |
+
+## Examples
+
+```bash
+# Show last 20 runs
+my cli history
+
+# Show last 50 runs
+my cli history -n 50
+```
+
+## Storage
+
+History is stored as JSONL (one JSON object per line) at `~/.my/history.jsonl`.

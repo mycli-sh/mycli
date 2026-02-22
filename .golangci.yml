@@ -1,0 +1,12 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+        - (*net/http.Server).Shutdown
+        - (*text/tabwriter.Writer).Flush

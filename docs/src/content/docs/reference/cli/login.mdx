@@ -1,0 +1,31 @@
+---
+title: my cli login
+description: Log in via email magic link.
+---
+
+```bash
+my cli login
+```
+
+Starts the device authentication flow using email magic links.
+
+## Flow
+
+1. Prompts for your email address
+2. Sends a magic link via the device auth endpoint
+3. You click the link in your email to verify
+4. The CLI polls for the token and stores it securely
+5. Automatically syncs your catalog after login
+
+## Token storage
+
+Credentials are stored in the OS keyring (macOS Keychain, Linux Secret Service, Windows Credential Manager). Falls back to `~/.my/credentials.json` if the keyring is unavailable.
+
+## Examples
+
+```bash
+my cli login
+# Enter your email: user@example.com
+# Check your email and click the verification link...
+# Logged in as user@example.com
+```

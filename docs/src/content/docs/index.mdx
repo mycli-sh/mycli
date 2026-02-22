@@ -1,0 +1,32 @@
+---
+title: mycli Documentation
+description: Define, publish, and run CLI commands from anywhere.
+template: splash
+hero:
+  tagline: A CLI tool for defining commands as code, publishing them to a registry, and running them from anywhere.
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/mycli-sh/mycli
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Define as Code" icon="pencil">
+    Author commands as YAML or JSON specs with args, flags, environment variables, Go templates, and multi-step workflows.
+  </Card>
+  <Card title="Publish & Sync" icon="rocket">
+    Push commands to a registry and sync them across machines. ETag-based caching keeps your catalog up to date.
+  </Card>
+  <Card title="Shelves & Libraries" icon="open-book">
+    Add git-backed shelves — curated repositories of commands that work without an account.
+  </Card>
+  <Card title="Run Anywhere" icon="laptop">
+    Sync once, run from any machine. Full argument parsing, template rendering, and shell execution.
+  </Card>
+</CardGrid>

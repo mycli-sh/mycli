@@ -1,0 +1,64 @@
+---
+title: Authentication
+description: How authentication works in mycli.
+---
+
+mycli uses email-based magic links for authentication. No passwords needed.
+
+## Login flow
+
+```bash
+my cli login
+```
+
+1. The CLI prompts for your email address
+2. A magic link is sent to your inbox via the device auth flow
+3. Click the link to verify your email
+4. The CLI receives a JWT token and stores it securely
+
+## Token storage
+
+Auth tokens are stored in your operating system's keyring (macOS Keychain, Linux Secret Service, Windows Credential Manager). If the keyring is unavailable, tokens fall back to `~/.my/credentials.json`.
+
+## Check login status
+
+```bash
+my cli whoami
+```
+
+Shows your user ID, email, and name if logged in.
+
+## Check overall status
+
+```bash
+my cli status
+```
+
+Shows the API URL, login state, last sync time, and cached command count.
+
+## Logout
+
+```bash
+my cli logout
+```
+
+Clears stored credentials from the keyring and local file.
+
+## Token refresh
+
+Access tokens are short-lived JWTs. The CLI automatically refreshes tokens using a refresh token when needed. You should rarely need to log in again.
+
+## Working without an account
+
+Many mycli features work without authentication:
+
+- **Shelves** — `my shelf add/remove/list/update` all work offline
+- **Sync** — `my cli sync` works without login (skips API sync, only updates shelves)
+- **Run from file** — `my cli run -f command.yaml` works locally without any network access
+
+Only publishing commands to the registry requires authentication.
+
+## Next steps
+
+- [CLI Reference: login](/reference/cli/login/) — login command details
+- [Environment Variables](/reference/environment-variables/) — API configuration

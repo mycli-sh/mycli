@@ -1,0 +1,32 @@
+---
+title: my cli show
+description: Show details of a cached command.
+---
+
+```bash
+my cli show <slug> [flags]
+```
+
+Displays details of a locally cached command spec.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `slug` | The command slug to show (required) |
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--raw` | Output raw JSON spec |
+
+## Examples
+
+```bash
+# Show command details
+my cli show deploy
+
+# Output raw JSON
+my cli show deploy --raw
+```

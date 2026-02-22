@@ -1,0 +1,42 @@
+---
+title: Installation
+description: How to install mycli on your machine.
+---
+
+## Prerequisites
+
+- **Go 1.25+** — mycli is written in Go and distributed as a Go module.
+
+## Install with Go
+
+```bash
+go install mycli.sh/cli/cmd/my@latest
+```
+
+This installs the `my` binary to your `$GOPATH/bin` directory. Make sure this directory is in your `PATH`.
+
+## Build from source
+
+```bash
+git clone https://github.com/mycli-sh/mycli.git
+cd mycli
+make build-cli
+```
+
+The binary is output to `./bin/my`. You can move it anywhere in your `PATH`:
+
+```bash
+sudo mv ./bin/my /usr/local/bin/my
+```
+
+## Verify installation
+
+```bash
+my --help
+```
+
+You should see the top-level help output listing available commands.
+
+## Next steps
+
+Head to the [Quickstart](/getting-started/quickstart/) to create and run your first command.

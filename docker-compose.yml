@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: mycli_dev
+      POSTGRES_USER: mycli
+      POSTGRES_PASSWORD: mycli
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

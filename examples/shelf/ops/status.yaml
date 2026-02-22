@@ -1,0 +1,28 @@
+schemaVersion: 1
+kind: command
+metadata:
+  name: Service Status
+  slug: status
+  description: Check the status of a running service
+  tags:
+    - ops
+    - status
+args:
+  positional:
+    - name: service
+      description: Service name to check
+      required: true
+  flags:
+    - name: verbose
+      short: v
+      type: bool
+      description: Show detailed output
+defaults:
+  shell: /bin/bash
+  timeout: 10s
+steps:
+  - name: check-status
+    run:
+      - echo "Service: {{.args.service}}"
+      - echo "Status:  running"
+      - echo "Uptime:  3d 12h 45m"

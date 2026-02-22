@@ -1,0 +1,42 @@
+---
+title: Environment Variables
+description: API server configuration reference.
+---
+
+The mycli API server reads all configuration from environment variables.
+
+## Server configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `postgres://mycli:mycli@localhost:5432/mycli_dev?sslmode=disable` | PostgreSQL connection string |
+| `PORT` | `8080` | Server listen port |
+| `JWT_SECRET` | `dev-secret-change-me` | Secret for signing JWTs |
+| `BASE_URL` | `http://localhost:8080` | Public base URL (used in magic link emails) |
+| `RESEND_API_KEY` | _(empty)_ | Resend API key for sending emails. When unset, emails are printed to stdout |
+| `EMAIL_FROM` | `mycli@updates.mycli.sh` | Sender address for emails |
+
+## Development setup
+
+For local development:
+
+```bash
+# Start PostgreSQL
+docker compose up -d
+
+# Run with defaults (dev mode)
+make dev
+
+# Or set variables explicitly
+DATABASE_URL="postgres://mycli:mycli@localhost:5432/mycli_dev?sslmode=disable" \
+JWT_SECRET=dev-secret \
+BASE_URL=http://localhost:8080 \
+PORT=8080 \
+./bin/api
+```
+
+## Email behavior
+
+When `RESEND_API_KEY` is not set, the API uses a log sender that prints magic link emails to stdout. This is useful for development — copy the verification URL from the console output.
+
+When `RESEND_API_KEY` is set, emails are sent via the [Resend](https://resend.com) API using the address specified in `EMAIL_FROM`.

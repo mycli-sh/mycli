@@ -1,0 +1,51 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+
+# Environment
+.env
+.env.*
+
+# CLI config
+.my/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage.out
+*.test
+/command.yaml
+/shelf/
+/mycli-libraries/
+scripts/dev-reset.sh
+
+# Web frontend
+web/node_modules/
+web/dist/
+
+# Landing page
+site/node_modules/
+site/dist/
+site/.astro/
+
+# Documentation
+docs/node_modules/
+docs/dist/
+docs/.astro/

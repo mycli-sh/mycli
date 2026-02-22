@@ -1,0 +1,48 @@
+---
+title: my cli run
+description: Run a cached command or a spec file.
+---
+
+```bash
+my cli run [-f file | slug] [flags] [-- args...]
+```
+
+Loads a cached spec (or reads a file with `-f`), parses arguments, renders templates, and executes steps.
+
+## Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Run directly from a spec file |
+| `--yes` | `-y` | Skip confirmation prompts |
+
+## Arguments
+
+Arguments after `--` are parsed by the command spec:
+
+- **Positional arguments** are matched in the order defined in the spec
+- **Flags** use `--name value` or `-s value` syntax
+
+## Examples
+
+```bash
+# Run a synced command
+my cli run deploy -- production
+
+# Run from a file
+my cli run -f command.yaml -- production
+
+# Skip confirmation
+my cli run deploy -y -- production
+
+# Pass flags to the command
+my cli run deploy -- production --replicas 3
+```
+
+## Execution flow
+
+1. Loads the spec from cache (or file with `-f`)
+2. Parses positional args and flags from the command line
+3. Renders Go templates in `run` lines and `env` values (`{{.args.X}}`, `{{.env.X}}`, `{{.cwd}}`, `{{.home}}`)
+4. Executes each step sequentially using the specified shell
+5. Records the run in history (`~/.my/history.jsonl`)

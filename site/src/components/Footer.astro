@@ -1,0 +1,62 @@
+---
+const columns = [
+  {
+    title: "Product",
+    links: [
+      { label: "Features", href: "#features" },
+      { label: "How It Works", href: "#how-it-works" },
+      { label: "Open App", href: "https://app.mycli.sh" },
+    ],
+  },
+  {
+    title: "Developers",
+    links: [
+      { label: "Documentation", href: "https://docs.mycli.sh" },
+      { label: "Quickstart", href: "https://docs.mycli.sh/getting-started/quickstart" },
+      { label: "Spec Format", href: "https://docs.mycli.sh/reference/spec-format" },
+    ],
+  },
+  {
+    title: "Community",
+    links: [
+      { label: "GitHub", href: "https://github.com/mycli-sh/mycli" },
+      { label: "Issues", href: "https://github.com/mycli-sh/mycli/issues" },
+    ],
+  },
+];
+---
+
+<footer class="border-t border-zinc-800/50 bg-zinc-950">
+  <div class="mx-auto max-w-6xl px-6 py-16">
+    <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
+      <div>
+        <a href="/">
+          <img src="/logo.svg" alt="mycli" class="h-6 opacity-60" />
+        </a>
+        <p class="mt-3 text-sm text-zinc-500">
+          Define, publish, and run CLI commands from anywhere.
+        </p>
+      </div>
+      {columns.map((col) => (
+        <div>
+          <h3 class="text-sm font-semibold text-zinc-300">{col.title}</h3>
+          <ul class="mt-3 space-y-2">
+            {col.links.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class="text-sm text-zinc-500 transition-colors hover:text-zinc-300"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+    <div class="mt-12 border-t border-zinc-800/50 pt-8 text-center text-sm text-zinc-600">
+      &copy; {new Date().getFullYear()} mycli. All rights reserved.
+    </div>
+  </div>
+</footer>

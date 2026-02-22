@@ -1,0 +1,12 @@
+.git
+bin/
+node_modules/
+site/
+docs/
+dist/
+*.md
+!web/**
+.github/
+.claude/
+.goreleaser.yaml
+docker-compose*.yml

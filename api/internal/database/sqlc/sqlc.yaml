@@ -1,0 +1,60 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "queries/"
+    schema: "../migrations/"
+    gen:
+      go:
+        package: "dbgen"
+        out: "../generated"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_interface: true
+        overrides:
+          # JSONB -> json.RawMessage
+          - db_type: "jsonb"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+          # Nullable TEXT -> *string
+          - column: "commands.library_id"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "libraries.owner_id"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "libraries.git_url"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "libraries.latest_version"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "users.username"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "magic_links.otp_hash"
+            go_type:
+              type: "string"
+              pointer: true
+          # Nullable TIMESTAMPTZ -> *time.Time
+          - column: "commands.deleted_at"
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - column: "magic_links.used_at"
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - column: "sessions.revoked_at"
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true

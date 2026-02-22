@@ -1,0 +1,143 @@
+---
+title: Spec Format
+description: Complete reference for the command spec format.
+---
+
+Command specs are YAML or JSON files validated against a [JSON Schema](https://github.com/mycli-sh/mycli/blob/main/pkg/spec/schema/command-v1.schema.json).
+
+## Full example
+
+```yaml
+schemaVersion: 1
+kind: command
+
+metadata:
+  name: deploy
+  slug: deploy
+  description: Deploy application to an environment
+  tags: [ops, deploy]
+
+args:
+  positional:
+    - name: environment
+      description: Target environment
+      required: true
+    - name: version
+      description: Version to deploy
+      required: false
+  flags:
+    - name: dry-run
+      short: n
+      type: bool
+      description: Preview without applying changes
+    - name: replicas
+      type: int
+      default: "3"
+      description: Number of replicas
+
+defaults:
+  shell: /bin/bash
+  timeout: 5m
+  env:
+    APP_NAME: myapp
+
+steps:
+  - name: validate
+    run:
+      - echo "Deploying {{.args.environment}}..."
+      - test -f deploy.sh
+  - name: deploy
+    run:
+      - ./deploy.sh {{.args.environment}}
+    timeout: 10m
+    env:
+      REPLICAS: "{{.args.replicas}}"
+
+policy:
+  requireConfirmation: true
+  allowedExecutables: [/bin/bash, /bin/echo]
+```
+
+## Top-level fields
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `schemaVersion` | Yes | `integer` | Must be `1` |
+| `kind` | Yes | `string` | Must be `"command"` |
+| `metadata` | Yes | `object` | Command metadata |
+| `args` | No | `object` | Argument definitions |
+| `defaults` | No | `object` | Default shell, timeout, and env |
+| `steps` | Yes | `array` | Steps to execute (minimum 1) |
+| `policy` | No | `object` | Execution policies |
+
+## metadata
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `name` | Yes | `string` | Human-readable name |
+| `slug` | Yes | `string` | URL-safe identifier. Must match `^[a-z][a-z0-9-]*$` |
+| `description` | No | `string` | Short description |
+| `tags` | No | `string[]` | Tags for organization |
+
+## args
+
+### args.positional
+
+Array of positional argument definitions, parsed in order.
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `name` | Yes | `string` | Argument name (used in templates as `{{.args.name}}`) |
+| `description` | No | `string` | Description |
+| `required` | No | `boolean` | Whether the argument is required (default: `false`) |
+
+### args.flags
+
+Array of named flag definitions.
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `name` | Yes | `string` | Flag name (used as `--name`) |
+| `short` | No | `string` | Single-character short form (used as `-x`) |
+| `type` | No | `string` | One of `string` (default), `bool`, `int` |
+| `default` | No | `string` | Default value |
+| `description` | No | `string` | Description |
+
+## defaults
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `shell` | `string` | Default shell for all steps (e.g., `/bin/bash`) |
+| `timeout` | `string` | Default timeout for all steps (e.g., `30s`, `5m`) |
+| `env` | `object` | Default environment variables for all steps |
+
+## steps
+
+Array of steps to execute sequentially.
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `name` | Yes | `string` | Step identifier |
+| `run` | Yes | `string[]` | Shell commands to execute |
+| `env` | No | `object` | Step-specific environment variables |
+| `timeout` | No | `string` | Override default timeout |
+| `shell` | No | `string` | Override default shell |
+| `continueOnError` | No | `boolean` | Continue to next step on failure |
+
+## policy
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `requireConfirmation` | `boolean` | Prompt user before running |
+| `allowedExecutables` | `string[]` | Restrict which binaries can be invoked |
+
+## Template variables
+
+Step `run` lines and `env` values are rendered as Go templates:
+
+| Variable | Description |
+|----------|-------------|
+| `{{.args.X}}` | Argument value by name |
+| `{{.env.X}}` | Environment variable value |
+| `{{.cwd}}` | Current working directory |
+| `{{.home}}` | User's home directory |

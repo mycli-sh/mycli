@@ -1,0 +1,82 @@
+---
+title: Running Commands
+description: Sync, discover, and execute commands from the registry or local files.
+---
+
+## Sync your catalog
+
+Before running commands from the registry, sync your local catalog:
+
+```bash
+my cli sync
+```
+
+This fetches the latest catalog from the API (with ETag support for efficient caching) and updates your local cache at `~/.my/cache/`. It also pulls the latest changes from any added shelves.
+
+Sync works without login — it skips API sync and only updates shelves.
+
+## Run a synced command
+
+```bash
+my cli run <slug> [-- args...]
+```
+
+For example:
+
+```bash
+my cli run deploy -- production
+my cli run greet -- --name World
+```
+
+Arguments after `--` are parsed by the command spec. Positional arguments are matched in order, and flags use `--name value` syntax.
+
+### Skip confirmation
+
+If a command has `requireConfirmation: true` in its policy, use `-y` to skip the prompt:
+
+```bash
+my cli run deploy -y -- production
+```
+
+## Run from a file
+
+Run a spec file directly without pushing to the registry:
+
+```bash
+my cli run -f command.yaml -- production
+```
+
+This is useful for local development and testing.
+
+## Inspect a command
+
+View details of a cached command:
+
+```bash
+my cli show deploy
+my cli show deploy --raw   # Output raw JSON spec
+```
+
+## View run history
+
+```bash
+my cli history
+my cli history -n 50   # Show last 50 entries
+```
+
+History is stored as JSONL at `~/.my/history.jsonl`.
+
+## How execution works
+
+When you run a command, mycli:
+
+1. Loads the cached spec (or reads the file with `-f`)
+2. Parses positional args and flags from the command line
+3. Renders Go templates in `run` lines and `env` values
+4. Executes each step sequentially using the specified shell
+5. Records the run in history
+
+## Next steps
+
+- [Template Variables](/guides/template-variables/) — use dynamic values in commands
+- [CLI Reference: run](/reference/cli/run/) — full flag and option reference

@@ -1,0 +1,39 @@
+schemaVersion: 1
+kind: command
+metadata:
+  name: Pod Logs
+  slug: logs
+  description: Stream logs from a Kubernetes pod
+  tags:
+    - k8s
+    - logs
+args:
+  positional:
+    - name: pod
+      description: Pod name or prefix
+      required: true
+  flags:
+    - name: namespace
+      short: "n"
+      type: string
+      description: Kubernetes namespace
+      default: default
+    - name: follow
+      short: f
+      type: bool
+      description: Follow log output
+    - name: lines
+      short: l
+      type: int
+      description: Number of lines to show
+      default: 50
+defaults:
+  shell: /bin/bash
+  timeout: 60s
+steps:
+  - name: get-logs
+    run:
+      - echo "Fetching logs for pod {{.args.pod}} in namespace {{.args.namespace}}..."
+      - echo "[2024-01-15 10:30:01] INFO  Starting application"
+      - echo "[2024-01-15 10:30:02] INFO  Listening on :8080"
+      - echo "[2024-01-15 10:30:05] INFO  Ready to serve requests"

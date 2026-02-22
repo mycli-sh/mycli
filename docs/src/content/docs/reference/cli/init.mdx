@@ -1,0 +1,41 @@
+---
+title: my cli init
+description: Scaffold a new command spec file.
+---
+
+```bash
+my cli init [name] [flags]
+```
+
+Creates a new `command.yaml` file with a starter template.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Optional. If provided, creates a subdirectory with the command name (e.g., `deploy/command.yaml`) |
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite an existing spec file |
+
+## Examples
+
+```bash
+# Create command.yaml in current directory
+my cli init
+
+# Create deploy/command.yaml
+my cli init deploy
+
+# Overwrite existing file
+my cli init deploy --force
+```
+
+## Behavior
+
+- Without a name argument: creates `command.yaml` in the current directory
+- With a name argument: creates `<name>/command.yaml`
+- Errors if the file already exists unless `--force` is used

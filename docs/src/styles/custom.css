@@ -1,0 +1,23 @@
+/* Custom Starlight theme — zinc/violet dark matching mycli.sh */
+
+:root {
+  --sl-color-accent-low: #1e1033;
+  --sl-color-accent: #8b5cf6;
+  --sl-color-accent-high: #c4b5fd;
+  --sl-color-white: #f4f4f5;
+  --sl-color-gray-1: #a1a1aa;
+  --sl-color-gray-2: #71717a;
+  --sl-color-gray-3: #52525b;
+  --sl-color-gray-4: #27272a;
+  --sl-color-gray-5: #18181b;
+  --sl-color-gray-6: #09090b;
+  --sl-color-black: #09090b;
+
+  --sl-font-system: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --sl-font-system-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Override the sidebar active link */
+starlight-menu-button + nav a[aria-current="page"] {
+  color: var(--sl-color-accent);
+}
