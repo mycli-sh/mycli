@@ -6,6 +6,8 @@ builds:
     binary: my
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X mycli.sh/cli/internal/config.DefaultAPIURL=https://api.mycli.sh
     goos:
       - linux
       - darwin

@@ -6,7 +6,16 @@ import (
 	"path/filepath"
 )
 
-const defaultAPIURL = "http://localhost:8080"
+// DefaultAPIURL can be set at build time via -ldflags to override the default.
+// When empty (local dev builds), it falls back to http://localhost:8080.
+var DefaultAPIURL string
+
+func DefaultAPI() string {
+	if DefaultAPIURL != "" {
+		return DefaultAPIURL
+	}
+	return "http://localhost:8080"
+}
 
 type Config struct {
 	APIURL           string `json:"api_url"`
@@ -23,7 +32,7 @@ func Load() (*Config, error) {
 	path := filepath.Join(dir, "config.json")
 
 	cfg := &Config{
-		APIURL: defaultAPIURL,
+		APIURL: DefaultAPI(),
 	}
 
 	data, err := os.ReadFile(path)
@@ -37,7 +46,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.APIURL == "" {
-		cfg.APIURL = defaultAPIURL
+		cfg.APIURL = DefaultAPI()
 	}
 	return cfg, nil
 }

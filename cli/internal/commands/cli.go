@@ -17,6 +17,7 @@ func newCliCmd() *cobra.Command {
 	cmd.AddCommand(newRunCmd())
 	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newHistoryCmd())
+	cmd.AddCommand(newSetAPIURLCmd())
 
 	return cmd
 }
