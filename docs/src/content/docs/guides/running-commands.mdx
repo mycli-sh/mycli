@@ -7,15 +7,13 @@ import { LinkCard } from '@astrojs/starlight/components';
 
 ## Sync your catalog
 
-Before running commands from the registry, sync your local catalog:
+Your local catalog is synced automatically when you run `my cli login` or `my library add`. You can also update libraries manually:
 
 ```bash
-my cli sync
+my library update
 ```
 
-This fetches the latest catalog from the API (with ETag support for efficient caching) and updates your local cache at `~/.my/cache/`. It also pulls the latest changes from any added shelves.
-
-Sync works without login — it skips API sync and only updates shelves.
+This pulls the latest changes from all installed library repos. The API catalog is synced with ETag support for efficient caching and stored locally at `~/.my/cache/`.
 
 ## Run a synced command
 

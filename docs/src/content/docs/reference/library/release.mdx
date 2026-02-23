@@ -1,0 +1,27 @@
+---
+title: my library release
+description: Create a versioned release from a git tag.
+---
+
+```bash
+my library release <tag>
+```
+
+Publishes a versioned release of a library from a git tag. This makes the release available for others to install from the registry.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `tag` | Git tag to release (required) |
+
+## Examples
+
+```bash
+# Create a release from a tag
+my library release v1.0.0
+```
+
+## Requires
+
+Authentication — you must be logged in via `my cli login`.

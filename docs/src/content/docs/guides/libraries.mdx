@@ -1,0 +1,144 @@
+---
+title: Libraries
+description: Share and use curated command sets via git-backed libraries.
+---
+
+import { FileTree, LinkCard } from '@astrojs/starlight/components';
+
+A **library** is a collection of commands that you can install and use. Libraries can come from the registry or from any git repository — no account needed.
+
+## How it works
+
+1. `my library add <identifier>` installs from the registry by name, or clones a git URL and reads its manifest (`shelf.yaml`)
+2. Each library in the manifest maps to a directory of command spec files
+3. Commands become available as `my <library> <slug>` (e.g., `my ops deploy`)
+4. `my library update` pulls the latest changes from all installed libraries
+
+`library` has alias `lib` (e.g., `my lib add kubernetes`).
+
+## Install a library
+
+### From the registry
+
+```bash
+my library add kubernetes
+```
+
+### From a git URL
+
+```bash
+my library add https://github.com/user/example-library.git
+```
+
+### Specify a branch or tag
+
+```bash
+my library add https://github.com/user/example-library.git --ref v1.0
+```
+
+### Custom name
+
+```bash
+my library add https://github.com/user/example-library.git --name my-tools
+```
+
+## Run library commands
+
+After installing a library, its commands are available as top-level subcommands:
+
+```bash
+my ops deploy -- production
+my k8s logs -- my-pod
+```
+
+## Manage libraries
+
+```bash
+my library list              # List all installed libraries
+my library list --json       # Output as JSON
+my library update            # Update all libraries
+my library update my-tools   # Update a specific library
+my library remove my-tools   # Remove a library
+```
+
+## Discover libraries
+
+### Search
+
+```bash
+my library search kubernetes
+```
+
+### Explore
+
+Browse libraries interactively with the TUI:
+
+```bash
+my library explore
+```
+
+### Library info
+
+View details about a library:
+
+```bash
+my library info kubernetes
+```
+
+## Publish a library
+
+### Create your own library repo
+
+#### Directory layout
+
+<FileTree>
+- my-library/
+  - shelf.yaml Manifest (required)
+  - ops/ Library directory
+    - deploy.yaml Command spec (slug: "deploy")
+    - status.yaml Command spec (slug: "status")
+  - k8s/
+    - logs.yaml Command spec (slug: "logs")
+</FileTree>
+
+#### Manifest format (`shelf.yaml`)
+
+```yaml title="shelf.yaml"
+shelfVersion: 1
+name: my-library
+description: A collection of useful commands
+libraries:
+  ops:
+    name: Operations
+    description: Deployment and operations commands
+    path: ops
+  k8s:
+    name: Kubernetes
+    description: Kubernetes helper commands
+    path: k8s
+```
+
+- `shelfVersion` must be `1`
+- Each key in `libraries` is the library slug (must match `^[a-z][a-z0-9-]*$`)
+- `path` points to a directory containing command spec files
+- Each spec file's `metadata.slug` must match the filename (minus extension)
+
+`shelf.yml` and `shelf.json` are also accepted for backward compatibility.
+
+### Release a version
+
+Create a versioned release from a git tag:
+
+```bash
+my library release v1.0.0
+```
+
+### Storage
+
+- Library repos are cloned to `~/.my/libraries/repos/` (path derived from URL)
+- The library registry lives at `~/.my/libraries/libraries.json`
+
+## Next steps
+
+<LinkCard title="Library Manifest Reference" description="Full manifest format." href="/reference/library-manifest/" />
+<LinkCard title="library add" description="Complete CLI reference." href="/reference/library/add/" />

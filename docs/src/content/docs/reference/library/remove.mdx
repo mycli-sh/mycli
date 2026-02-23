@@ -1,0 +1,28 @@
+---
+title: my library remove
+description: Remove an installed library.
+---
+
+```bash
+my library remove <name>
+```
+
+Removes a library from the registry and deletes the cloned repository.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Name of the library to remove (required) |
+
+## Examples
+
+```bash
+my library remove my-library
+```
+
+## Behavior
+
+- Removes the library entry from `~/.my/libraries/libraries.json`
+- Deletes the cloned repository from `~/.my/libraries/repos/`
+- Library commands are no longer available

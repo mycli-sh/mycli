@@ -1,0 +1,26 @@
+---
+title: my library info
+description: Show details about a library.
+---
+
+```bash
+my library info <identifier>
+```
+
+Displays detailed information about a library, including its description, available commands, and version history.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `identifier` | Library name or `owner/slug` identifier (required) |
+
+## Examples
+
+```bash
+# Show info for a library
+my library info kubernetes
+
+# Show info by owner/slug
+my library info mycli/kubernetes
+```

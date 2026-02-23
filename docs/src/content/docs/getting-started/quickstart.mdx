@@ -58,10 +58,9 @@ This guide walks you through creating a simple command, pushing it to the regist
 
    The CLI validates your spec against the JSON Schema and publishes it to the server.
 
-4. **Sync and run**
+4. **Run**
 
    ```bash
-   my cli sync
    my cli run hello -- World
    ```
 
@@ -72,12 +71,12 @@ This guide walks you through creating a simple command, pushing it to the regist
 
 </Steps>
 
-## Using shelves (no account needed)
+## Using libraries (no account needed)
 
-You can also use commands from git-backed shelves without an account:
+You can also use commands from git-backed libraries without an account:
 
 ```bash
-my shelf add https://github.com/user/example-shelf.git
+my library add https://github.com/user/example-library.git
 my <library> <command>
 ```
 
@@ -85,4 +84,4 @@ my <library> <command>
 
 <LinkCard title="Creating Commands" description="Learn the full spec format for authoring commands." href="/guides/creating-commands/" />
 <LinkCard title="Template Variables" description="Use dynamic values in your commands." href="/guides/template-variables/" />
-<LinkCard title="Shelves & Libraries" description="Share commands via git repos." href="/guides/shelves-and-libraries/" />
+<LinkCard title="Libraries" description="Share commands via git repos." href="/guides/libraries/" />

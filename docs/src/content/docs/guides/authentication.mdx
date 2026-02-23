@@ -32,7 +32,7 @@ Auth tokens are stored in your operating system's keyring (macOS Keychain, Linux
 my cli whoami
 ```
 
-Shows your user ID, email, and name if logged in.
+Shows your user ID and email if logged in.
 
 ## Check overall status
 
@@ -59,8 +59,7 @@ Access tokens are short-lived JWTs. The CLI automatically refreshes tokens using
 <Aside type="tip">
 Many mycli features work without authentication:
 
-- **Shelves** — `my shelf add/remove/list/update` all work offline
-- **Sync** — `my cli sync` works without login (skips API sync, only updates shelves)
+- **Libraries** — `my library add/remove/list/update` all work offline
 - **Run from file** — `my cli run -f command.yaml` works locally without any network access
 
 Only publishing commands to the registry requires authentication.

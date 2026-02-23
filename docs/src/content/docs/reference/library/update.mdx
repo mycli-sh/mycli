@@ -1,0 +1,26 @@
+---
+title: my library update
+description: Update one or all installed libraries.
+---
+
+```bash
+my library update [name]
+```
+
+Pulls the latest changes from library repositories via `git pull`.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Optional. Name of a specific library to update. If omitted, updates all libraries. |
+
+## Examples
+
+```bash
+# Update all libraries
+my library update
+
+# Update a specific library
+my library update my-tools
+```

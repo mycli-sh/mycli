@@ -16,6 +16,10 @@ metadata:
   slug: deploy
   description: Deploy application to an environment
   tags: [ops, deploy]
+  aliases: [dep]
+
+dependencies:
+  - deploy.sh
 
 args:
   positional:
@@ -65,6 +69,7 @@ policy:
 | `schemaVersion` | Yes | `integer` | Must be `1` |
 | `kind` | Yes | `string` | Must be `"command"` |
 | `metadata` | Yes | `object` | Command metadata |
+| `dependencies` | No | `string[]` | Required binary dependencies (checked before execution) |
 | `args` | No | `object` | Argument definitions |
 | `defaults` | No | `object` | Default shell, timeout, and env |
 | `steps` | Yes | `array` | Steps to execute (minimum 1) |
@@ -78,6 +83,17 @@ policy:
 | `slug` | Yes | `string` | URL-safe identifier. Must match `^[a-z][a-z0-9-]*$` |
 | `description` | No | `string` | Short description |
 | `tags` | No | `string[]` | Tags for organization |
+| `aliases` | No | `string[]` | Alternative slugs for the command |
+
+## dependencies
+
+An optional array of binary dependencies that must be available on the system. These are checked before execution.
+
+```yaml
+dependencies:
+  - curl
+  - jq
+```
 
 ## args
 

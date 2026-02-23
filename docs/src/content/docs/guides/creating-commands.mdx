@@ -67,6 +67,19 @@ policy:
 | `slug` | Yes | URL-safe identifier. Must match `^[a-z][a-z0-9-]*$` |
 | `description` | No | Short description of what the command does |
 | `tags` | No | Array of tags for organization |
+| `aliases` | No | Alternative slugs for the command |
+
+## Dependencies
+
+Specify required binaries that are checked before execution:
+
+```yaml
+dependencies:
+  - curl
+  - jq
+```
+
+If any dependency is missing, the command will fail with a helpful error message before running any steps.
 
 ## Arguments
 
