@@ -12,10 +12,11 @@ RUN bun run build
 
 FROM nginx:alpine
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf.template
 COPY docker/web-entrypoint.sh /docker-entrypoint.d/40-env-replace.sh
 RUN chmod +x /docker-entrypoint.d/40-env-replace.sh
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+ENV PORT=8080
+EXPOSE 8080
