@@ -339,10 +339,6 @@ func (h *AuthHandler) VerifyMagicLink(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "failed to create user", http.StatusInternalServerError)
 				return
 			}
-			// Auto-install default libraries for new users
-			if lib, err := h.store.GetLibraryBySlug(ctx, "kubernetes"); err == nil {
-				_ = h.store.InstallLibrary(ctx, user.ID, lib.ID)
-			}
 		} else {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -428,9 +424,6 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create user")
 				return
-			}
-			if lib, libErr := h.store.GetLibraryBySlug(ctx, "kubernetes"); libErr == nil {
-				_ = h.store.InstallLibrary(ctx, user.ID, lib.ID)
 			}
 		} else {
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")

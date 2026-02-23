@@ -112,10 +112,6 @@ func (h *WebAuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create user")
 				return
 			}
-			// Auto-install default libraries for new users
-			if lib, libErr := h.store.GetLibraryBySlug(ctx, "kubernetes"); libErr == nil {
-				_ = h.store.InstallLibrary(ctx, user.ID, lib.ID)
-			}
 		} else {
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 			return
