@@ -3,6 +3,8 @@ title: Creating Commands
 description: How to author command specs with args, flags, steps, and policies.
 ---
 
+import { LinkCard } from '@astrojs/starlight/components';
+
 Commands are defined as YAML or JSON files validated against a JSON Schema. This guide covers all the fields available in a command spec.
 
 ## Scaffold a new command
@@ -17,7 +19,7 @@ This creates `deploy/command.yaml` with a starter template. Use `--force` to ove
 
 Every command spec has these top-level fields:
 
-```yaml
+```yaml title="command.yaml"
 schemaVersion: 1
 kind: command
 
@@ -170,5 +172,5 @@ my cli run -f command.yaml -- production
 
 ## Next steps
 
-- [Publishing Commands](/guides/publishing-commands/) — push to the registry
-- [Template Variables](/guides/template-variables/) — use dynamic values in commands
+<LinkCard title="Publishing Commands" description="Push to the registry." href="/guides/publishing-commands/" />
+<LinkCard title="Template Variables" description="Use dynamic values in commands." href="/guides/template-variables/" />

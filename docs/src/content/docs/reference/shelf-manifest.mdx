@@ -3,11 +3,13 @@ title: Shelf Manifest
 description: Reference for the shelf.yaml manifest format.
 ---
 
+import { FileTree } from '@astrojs/starlight/components';
+
 Every shelf repository must have a manifest file at its root. The accepted filenames are `shelf.yaml` (preferred), `shelf.yml`, or `shelf.json`.
 
 ## Full example
 
-```yaml
+```yaml title="shelf.yaml"
 shelfVersion: 1
 name: my-shelf
 description: A collection of useful commands
@@ -43,15 +45,15 @@ Each key in `libraries` is the library slug, which must match `^[a-z][a-z0-9-]*$
 
 ## Directory layout
 
-```
-my-shelf/
-  shelf.yaml            # Manifest
-  ops/                  # Library directory (path: ops)
-    deploy.yaml         # Command spec (slug: "deploy")
-    status.yaml         # Command spec (slug: "status")
-  k8s/                  # Library directory (path: k8s)
-    logs.yaml           # Command spec (slug: "logs")
-```
+<FileTree>
+- my-shelf/
+  - shelf.yaml Manifest
+  - ops/ Library directory
+    - deploy.yaml Command spec (slug: "deploy")
+    - status.yaml Command spec (slug: "status")
+  - k8s/ Library directory
+    - logs.yaml Command spec (slug: "logs")
+</FileTree>
 
 ## Spec file requirements
 

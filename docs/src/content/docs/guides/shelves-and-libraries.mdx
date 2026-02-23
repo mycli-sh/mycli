@@ -3,6 +3,8 @@ title: Shelves & Libraries
 description: Share and use curated command sets via git-backed shelves.
 ---
 
+import { FileTree, LinkCard } from '@astrojs/starlight/components';
+
 A **shelf** is a git repository that provides one or more command **libraries**. Shelves let you share and use curated sets of commands without needing an account or API server — just a git URL.
 
 ## How it works
@@ -53,19 +55,19 @@ my shelf remove my-tools   # Remove a shelf
 
 ### Directory layout
 
-```
-my-shelf/
-  shelf.yaml            # Manifest (required)
-  ops/                  # Library directory
-    deploy.yaml         # Command spec (slug: "deploy")
-    status.yaml         # Command spec (slug: "status")
-  k8s/
-    logs.yaml           # Command spec (slug: "logs")
-```
+<FileTree>
+- my-shelf/
+  - shelf.yaml Manifest (required)
+  - ops/ Library directory
+    - deploy.yaml Command spec (slug: "deploy")
+    - status.yaml Command spec (slug: "status")
+  - k8s/
+    - logs.yaml Command spec (slug: "logs")
+</FileTree>
 
 ### Manifest format (`shelf.yaml`)
 
-```yaml
+```yaml title="shelf.yaml"
 shelfVersion: 1
 name: my-shelf
 description: A collection of useful commands
@@ -105,5 +107,5 @@ Subscribed library commands are also available as `my <library> <command>`.
 
 ## Next steps
 
-- [Shelf Manifest Reference](/reference/shelf-manifest/) — full manifest format
-- [shelf add](/reference/shelf/add/) — complete CLI reference
+<LinkCard title="Shelf Manifest Reference" description="Full manifest format." href="/reference/shelf-manifest/" />
+<LinkCard title="shelf add" description="Complete CLI reference." href="/reference/shelf/add/" />

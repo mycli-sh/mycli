@@ -3,6 +3,8 @@ title: my cli login
 description: Log in via email magic link.
 ---
 
+import { Steps } from '@astrojs/starlight/components';
+
 ```bash
 my cli login
 ```
@@ -11,11 +13,15 @@ Starts the device authentication flow using email magic links.
 
 ## Flow
 
+<Steps>
+
 1. Prompts for your email address
 2. Sends a magic link via the device auth endpoint
 3. You click the link in your email to verify
 4. The CLI polls for the token and stores it securely
 5. Automatically syncs your catalog after login
+
+</Steps>
 
 ## Token storage
 

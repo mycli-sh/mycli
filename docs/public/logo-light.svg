@@ -1,0 +1,13 @@
+<svg viewBox="0 0 340 70" role="img" aria-label="mycli" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logo-chevron" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#A78BFA" />
+    </linearGradient>
+  </defs>
+  <text x="0" y="55" fill="url(#logo-chevron)" font-family="monospace" font-size="56" font-weight="700">&gt;</text>
+  <text x="38" y="55" font-family="monospace" font-size="56" font-weight="700">
+    <tspan fill="#18181b">my</tspan>
+    <tspan fill="#8B5CF6">cli</tspan>
+  </text>
+</svg>

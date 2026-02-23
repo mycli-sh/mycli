@@ -3,6 +3,8 @@ title: Authentication
 description: How authentication works in mycli.
 ---
 
+import { Aside, LinkCard, Steps } from '@astrojs/starlight/components';
+
 mycli uses email-based magic links for authentication. No passwords needed.
 
 ## Login flow
@@ -11,10 +13,14 @@ mycli uses email-based magic links for authentication. No passwords needed.
 my cli login
 ```
 
+<Steps>
+
 1. The CLI prompts for your email address
 2. A magic link is sent to your inbox via the device auth flow
 3. Click the link to verify your email
 4. The CLI receives a JWT token and stores it securely
+
+</Steps>
 
 ## Token storage
 
@@ -50,6 +56,7 @@ Access tokens are short-lived JWTs. The CLI automatically refreshes tokens using
 
 ## Working without an account
 
+<Aside type="tip">
 Many mycli features work without authentication:
 
 - **Shelves** — `my shelf add/remove/list/update` all work offline
@@ -57,8 +64,9 @@ Many mycli features work without authentication:
 - **Run from file** — `my cli run -f command.yaml` works locally without any network access
 
 Only publishing commands to the registry requires authentication.
+</Aside>
 
 ## Next steps
 
-- [CLI Reference: login](/reference/cli/login/) — login command details
-- [Environment Variables](/reference/environment-variables/) — API configuration
+<LinkCard title="CLI Reference: login" description="Login command details." href="/reference/cli/login/" />
+<LinkCard title="Environment Variables" description="API configuration." href="/reference/environment-variables/" />

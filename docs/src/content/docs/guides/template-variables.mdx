@@ -3,6 +3,8 @@ title: Template Variables
 description: Use Go templates for dynamic values in command specs.
 ---
 
+import { LinkCard } from '@astrojs/starlight/components';
+
 Step `run` lines and `env` values in command specs are rendered as Go templates before execution. This lets you inject arguments, environment variables, and system info into your commands.
 
 ## Available variables
@@ -94,5 +96,5 @@ steps:
 
 ## Next steps
 
-- [Creating Commands](/guides/creating-commands/) — full spec authoring guide
-- [Spec Format Reference](/reference/spec-format/) — complete field reference
+<LinkCard title="Creating Commands" description="Full spec authoring guide." href="/guides/creating-commands/" />
+<LinkCard title="Spec Format Reference" description="Complete field reference." href="/reference/spec-format/" />

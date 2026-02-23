@@ -3,68 +3,74 @@ title: Quickstart
 description: Create, publish, and run your first command in under a minute.
 ---
 
+import { LinkCard, Steps } from '@astrojs/starlight/components';
+
 This guide walks you through creating a simple command, pushing it to the registry, and running it.
 
-## 1. Log in
+<Steps>
 
-mycli uses email-based magic links for authentication:
+1. **Log in**
 
-```bash
-my cli login
-```
+   mycli uses email-based magic links for authentication:
 
-Enter your email address and click the verification link sent to your inbox. After verification, the CLI stores your credentials securely in the OS keyring.
+   ```bash
+   my cli login
+   ```
 
-## 2. Create a command
+   Enter your email address and click the verification link sent to your inbox. After verification, the CLI stores your credentials securely in the OS keyring.
 
-Scaffold a new command spec:
+2. **Create a command**
 
-```bash
-my cli init hello
-```
+   Scaffold a new command spec:
 
-This creates a `hello/command.yaml` file with a starter template. Edit it:
+   ```bash
+   my cli init hello
+   ```
 
-```yaml
-schemaVersion: 1
-kind: command
+   This creates a `hello/command.yaml` file with a starter template. Edit it:
 
-metadata:
-  name: hello
-  slug: hello
-  description: Say hello
+   ```yaml title="hello/command.yaml"
+   schemaVersion: 1
+   kind: command
 
-args:
-  positional:
-    - name: name
-      description: Who to greet
-      required: true
+   metadata:
+     name: hello
+     slug: hello
+     description: Say hello
 
-steps:
-  - name: greet
-    run:
-      - echo "Hello, {{.args.name}}!"
-```
+   args:
+     positional:
+       - name: name
+         description: Who to greet
+         required: true
 
-## 3. Push to the registry
+   steps:
+     - name: greet
+       run:
+         - echo "Hello, {{.args.name}}!"
+   ```
 
-```bash
-my cli push -f hello/command.yaml
-```
+3. **Push to the registry**
 
-The CLI validates your spec against the JSON Schema and publishes it to the server.
+   ```bash
+   my cli push -f hello/command.yaml
+   ```
 
-## 4. Sync and run
+   The CLI validates your spec against the JSON Schema and publishes it to the server.
 
-```bash
-my cli sync
-my cli run hello -- World
-```
+4. **Sync and run**
 
-Output:
-```
-Hello, World!
-```
+   ```bash
+   my cli sync
+   my cli run hello -- World
+   ```
+
+   Output:
+   ```
+   Hello, World!
+   ```
+
+</Steps>
 
 ## Using shelves (no account needed)
 
@@ -77,6 +83,6 @@ my <library> <command>
 
 ## Next steps
 
-- [Creating Commands](/guides/creating-commands/) — learn the full spec format
-- [Template Variables](/guides/template-variables/) — use dynamic values in your commands
-- [Shelves & Libraries](/guides/shelves-and-libraries/) — share commands via git repos
+<LinkCard title="Creating Commands" description="Learn the full spec format for authoring commands." href="/guides/creating-commands/" />
+<LinkCard title="Template Variables" description="Use dynamic values in your commands." href="/guides/template-variables/" />
+<LinkCard title="Shelves & Libraries" description="Share commands via git repos." href="/guides/shelves-and-libraries/" />

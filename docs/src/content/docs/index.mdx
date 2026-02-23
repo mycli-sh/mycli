@@ -14,7 +14,18 @@ hero:
       icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+
+export const terminalExample = `$ my cli init hello
+  Created hello/command.yaml
+
+$ my cli push -f hello/command.yaml
+  Pushed hello v1
+
+$ my cli run hello -- World
+  Hello, World!`;
+
+<Code code={terminalExample} lang="bash" title="Terminal" />
 
 <CardGrid stagger>
   <Card title="Define as Code" icon="pencil">

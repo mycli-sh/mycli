@@ -7,8 +7,48 @@ export default defineConfig({
     starlight({
       title: "mycli",
       logo: {
-        src: "./public/logo.svg",
+        dark: "./public/logo.svg",
+        light: "./public/logo-light.svg",
+        replacesTitle: true,
       },
+      head: [
+        {
+          tag: "script",
+          attrs: { is: "inline" },
+          content:
+            'if (!("starlight-theme" in localStorage)) { localStorage.setItem("starlight-theme", "dark"); }',
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "icon",
+            href: "/favicon.svg",
+            type: "image/svg+xml",
+          },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "preconnect",
+            href: "https://fonts.googleapis.com",
+          },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "preconnect",
+            href: "https://fonts.gstatic.com",
+            crossorigin: true,
+          },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "stylesheet",
+            href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap",
+          },
+        },
+      ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/mycli-sh/mycli" },
       ],
