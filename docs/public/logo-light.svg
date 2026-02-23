@@ -6,8 +6,5 @@
     </linearGradient>
   </defs>
   <text x="0" y="55" fill="url(#logo-chevron)" font-family="monospace" font-size="56" font-weight="700">&gt;</text>
-  <text x="38" y="55" font-family="monospace" font-size="56" font-weight="700">
-    <tspan fill="#18181b">my</tspan>
-    <tspan fill="#8B5CF6">cli</tspan>
-  </text>
+  <text x="38" y="55" font-family="monospace" font-size="56" font-weight="700"><tspan fill="#18181b">my</tspan><tspan fill="#8B5CF6">cli</tspan></text>
 </svg>

@@ -22,10 +22,7 @@ export function Logo({ className }: { className?: string }) {
       >
         &gt;
       </text>
-      <text x="38" y="55" fontFamily="monospace" fontSize="56" fontWeight="700">
-        <tspan fill="#ffffff">my</tspan>
-        <tspan fill="#8B5CF6">cli</tspan>
-      </text>
+      <text x="38" y="55" fontFamily="monospace" fontSize="56" fontWeight="700"><tspan fill="#ffffff">my</tspan><tspan fill="#8B5CF6">cli</tspan></text>
     </svg>
   );
 }
