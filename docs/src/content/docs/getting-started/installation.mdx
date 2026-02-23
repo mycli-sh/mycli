@@ -5,12 +5,17 @@ description: How to install mycli on your machine.
 
 import { Aside, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
 
-<Aside type="note">
-mycli requires **Go 1.25+**. Make sure Go is installed and `$GOPATH/bin` is in your `PATH`.
-</Aside>
-
 <Tabs>
+  <TabItem label="Homebrew">
+    ```bash
+    brew install mycli-sh/tap/mycli
+    ```
+  </TabItem>
   <TabItem label="Install with Go">
+    <Aside type="note">
+    mycli requires **Go 1.25+**. Make sure Go is installed and `$GOPATH/bin` is in your `PATH`.
+    </Aside>
+
     ```bash
     go install mycli.sh/cli/cmd/my@latest
     ```
