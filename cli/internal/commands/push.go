@@ -60,7 +60,7 @@ func newPushCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&message, "message", "m", "", "version message")
-	cmd.Flags().StringVarP(&file, "file", "f", "command.json", "spec file to push")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "spec file to push (auto-detects command.yaml/yml/json)")
 	cmd.Flags().StringVar(&dir, "dir", "", "push all spec files found in directory tree")
 	return cmd
 }
@@ -168,7 +168,7 @@ func pushDir(c *client.Client, dir string, message string) error {
 
 	fmt.Printf("\n%d succeeded, %d failed\n", succeeded, failed)
 	if firstErr != nil {
-		return fmt.Errorf("some pushes failed")
+		return fmt.Errorf("some pushes failed; first error: %w", firstErr)
 	}
 	return nil
 }

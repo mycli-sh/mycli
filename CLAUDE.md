@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-mycli (module `mycli.sh`) is a CLI tool (`my`) and API server for defining, publishing, and running shell-based command specs. Users author commands as YAML or JSON specs (validated against a JSON Schema), push them to the API, sync them locally, and run them. Users can also add git-backed **shelves** — repositories of command libraries that work without an account. Authentication uses a device-flow with email-verified magic links.
+mycli (module `mycli.sh`) is a CLI tool (`my`) and API server for defining, publishing, and running shell-based command specs. Users author commands as YAML or JSON specs (validated against a JSON Schema), push them to the API, and run them. Users can also add git-backed **libraries** — repositories of command libraries that work without an account. Authentication uses a device-flow with email-verified magic links.
 
 ## Build & Dev Commands
 
@@ -35,9 +35,10 @@ Shared package:
 Key data flow:
 1. `my cli init` scaffolds a `command.yaml` file. With a name argument it creates a subdirectory (`deploy/command.yaml`). Errors if file exists; `--force` overrides.
 2. `my cli push` validates the spec via `pkg/spec`, then creates/updates the command and publishes a version through the API. `--dir` batch-pushes all spec files found in a directory tree.
-3. `my cli sync` fetches the catalog (with ETag support) and caches specs locally under `~/.my/cache/`. Also updates shelves via `git pull`. Works without login (skips API sync).
+3. Syncing is automatic — it happens during `my cli login` and library operations (e.g., `my library add`, `my library update`). There is no standalone sync command. The catalog is cached locally under `~/.my/cache/` with ETag support.
 4. `my cli run <slug>` loads the cached spec, parses args (positional + flags), renders Go templates (`{{.args.X}}`, `{{.env.X}}`, `{{.cwd}}`, `{{.home}}`), and executes steps via shell. `my cli run -f <file>` runs directly from a spec file without push/sync.
-5. `my shelf add <url>` clones a shelf repo, validates specs, and registers it. Shelf commands are available as `my <library> <slug>`.
+5. `my library add <url>` clones a library repo, validates specs, and registers it. Library commands are available as `my <library> <slug>`.
+6. `my cli set-api-url <url>` sets and persists a custom API URL for the CLI to use.
 
 ## API Configuration
 
@@ -45,10 +46,10 @@ The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JW
 
 ## Conventions
 
-- Database IDs use prefixed UUIDs (`usr_`, `cmd_`, `cv_`, `ml_`)
+- Database IDs use prefixed UUIDs (`usr_`, `cmd_`, `cv_`, `ml_`, `lib_`, `ses_`, `lr_`)
 - Soft deletes on commands (`deleted_at` column)
 - Auth tokens stored in OS keyring with file fallback (`~/.my/credentials.json`)
 - CLI local history stored as JSONL at `~/.my/history.jsonl`
 - Command slugs must match `^[a-z][a-z0-9-]*$`
-- Shelf repos cloned under `~/.my/shelves/repos/` (path derived from URL)
-- Shelf registry at `~/.my/shelves/shelves.json`
+- Library repos cloned under `~/.my/shelves/repos/` (path derived from URL)
+- Library registry at `~/.my/shelves/shelves.json`

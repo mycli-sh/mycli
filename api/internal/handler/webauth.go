@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"mycli.sh/api/internal/config"
@@ -136,7 +137,7 @@ func (h *WebAuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	userAgent := r.UserAgent()
 	ipAddress := r.RemoteAddr
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ipAddress = fwd
+		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
 	}
 
 	session, err := h.store.CreateSession(ctx, user.ID, refreshTokenHash, userAgent, ipAddress, time.Now().Add(30*24*time.Hour))

@@ -38,12 +38,32 @@ type deviceSession struct {
 }
 
 func NewAuthHandler(cfg *config.Config, s AuthStore, emailSender email.Sender) *AuthHandler {
-	return &AuthHandler{
+	h := &AuthHandler{
 		cfg:         cfg,
 		store:       s,
 		email:       emailSender,
 		devices:     make(map[string]*deviceSession),
 		otpAttempts: make(map[string]int),
+	}
+	go h.cleanupExpiredDeviceSessions()
+	return h
+}
+
+// cleanupExpiredDeviceSessions periodically removes expired device sessions
+// and their associated OTP attempts to prevent unbounded memory growth.
+func (h *AuthHandler) cleanupExpiredDeviceSessions() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		h.mu.Lock()
+		now := time.Now()
+		for code, session := range h.devices {
+			if now.After(session.ExpiresAt) {
+				delete(h.devices, code)
+				delete(h.otpAttempts, code)
+			}
+		}
+		h.mu.Unlock()
 	}
 }
 
@@ -149,7 +169,7 @@ func (h *AuthHandler) PollDeviceToken(w http.ResponseWriter, r *http.Request) {
 	userAgent := r.UserAgent()
 	ipAddress := r.RemoteAddr
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ipAddress = fwd
+		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
 	}
 	if sess, err := h.store.CreateSession(r.Context(), userID, refreshTokenHash, userAgent, ipAddress, time.Now().Add(30*24*time.Hour)); err == nil {
 		sessionID = sess.ID

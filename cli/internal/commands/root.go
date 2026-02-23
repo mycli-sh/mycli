@@ -184,6 +184,7 @@ func containsHelpFlag(args []string) bool {
 func registerGitLibraryCommands(root *cobra.Command, registeredCmds map[string]map[string]bool) {
 	reg, err := library.LoadRegistry()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load library registry: %v\n", err)
 		return
 	}
 
