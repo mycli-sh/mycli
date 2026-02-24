@@ -8,34 +8,35 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/model"
 	"mycli.sh/api/internal/store"
 )
 
 type mockSessionStore struct {
-	ListSessionsByUserFn      func(ctx context.Context, userID string) ([]model.Session, error)
-	RevokeSessionFn           func(ctx context.Context, id string) error
-	RevokeAllSessionsExceptFn func(ctx context.Context, userID, exceptID string) (int64, error)
+	ListSessionsByUserFn      func(ctx context.Context, userID uuid.UUID) ([]model.Session, error)
+	RevokeSessionFn           func(ctx context.Context, id uuid.UUID) error
+	RevokeAllSessionsExceptFn func(ctx context.Context, userID, exceptID uuid.UUID) (int64, error)
 }
 
-func (m *mockSessionStore) ListSessionsByUser(ctx context.Context, userID string) ([]model.Session, error) {
+func (m *mockSessionStore) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]model.Session, error) {
 	return m.ListSessionsByUserFn(ctx, userID)
 }
-func (m *mockSessionStore) RevokeSession(ctx context.Context, id string) error {
+func (m *mockSessionStore) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	return m.RevokeSessionFn(ctx, id)
 }
-func (m *mockSessionStore) RevokeAllSessionsExcept(ctx context.Context, userID, exceptID string) (int64, error) {
+func (m *mockSessionStore) RevokeAllSessionsExcept(ctx context.Context, userID, exceptID uuid.UUID) (int64, error) {
 	return m.RevokeAllSessionsExceptFn(ctx, userID, exceptID)
 }
 
 func TestSessionHandler_List(t *testing.T) {
 	now := time.Now()
 	ms := &mockSessionStore{
-		ListSessionsByUserFn: func(_ context.Context, _ string) ([]model.Session, error) {
+		ListSessionsByUserFn: func(_ context.Context, _ uuid.UUID) ([]model.Session, error) {
 			return []model.Session{
-				{ID: "ses_1", UserAgent: "curl/8.0", IPAddress: "127.0.0.1", LastUsedAt: now, ExpiresAt: now.Add(24 * time.Hour), CreatedAt: now},
-				{ID: "ses_2", UserAgent: "my/1.0", IPAddress: "10.0.0.1", LastUsedAt: now, ExpiresAt: now.Add(24 * time.Hour), CreatedAt: now},
+				{ID: testSes1, UserAgent: "curl/8.0", IPAddress: "127.0.0.1", LastUsedAt: now, ExpiresAt: now.Add(24 * time.Hour), CreatedAt: now},
+				{ID: testSes2, UserAgent: "my/1.0", IPAddress: "10.0.0.1", LastUsedAt: now, ExpiresAt: now.Add(24 * time.Hour), CreatedAt: now},
 			}, nil
 		},
 	}
@@ -44,7 +45,7 @@ func TestSessionHandler_List(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/sessions", h.List)
 
-	req := requestWithUser("GET", "/sessions", nil, "usr_alice")
+	req := requestWithUser("GET", "/sessions", nil, testUser1)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -71,24 +72,24 @@ func TestSessionHandler_Revoke(t *testing.T) {
 	}{
 		{
 			name:      "success",
-			sessionID: "ses_1",
+			sessionID: testSes1.String(),
 			setupStore: func(ms *mockSessionStore) {
-				ms.ListSessionsByUserFn = func(context.Context, string) ([]model.Session, error) {
+				ms.ListSessionsByUserFn = func(context.Context, uuid.UUID) ([]model.Session, error) {
 					return []model.Session{
-						{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now},
+						{ID: testSes1, LastUsedAt: now, ExpiresAt: now, CreatedAt: now},
 					}, nil
 				}
-				ms.RevokeSessionFn = func(context.Context, string) error { return nil }
+				ms.RevokeSessionFn = func(context.Context, uuid.UUID) error { return nil }
 			},
 			wantCode: http.StatusOK,
 		},
 		{
 			name:      "session not owned",
-			sessionID: "ses_other",
+			sessionID: testSes2.String(),
 			setupStore: func(ms *mockSessionStore) {
-				ms.ListSessionsByUserFn = func(context.Context, string) ([]model.Session, error) {
+				ms.ListSessionsByUserFn = func(context.Context, uuid.UUID) ([]model.Session, error) {
 					return []model.Session{
-						{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now},
+						{ID: testSes1, LastUsedAt: now, ExpiresAt: now, CreatedAt: now},
 					}, nil
 				}
 			},
@@ -97,14 +98,14 @@ func TestSessionHandler_Revoke(t *testing.T) {
 		},
 		{
 			name:      "revoke returns not found",
-			sessionID: "ses_1",
+			sessionID: testSes1.String(),
 			setupStore: func(ms *mockSessionStore) {
-				ms.ListSessionsByUserFn = func(context.Context, string) ([]model.Session, error) {
+				ms.ListSessionsByUserFn = func(context.Context, uuid.UUID) ([]model.Session, error) {
 					return []model.Session{
-						{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now},
+						{ID: testSes1, LastUsedAt: now, ExpiresAt: now, CreatedAt: now},
 					}, nil
 				}
-				ms.RevokeSessionFn = func(context.Context, string) error { return store.ErrNotFound }
+				ms.RevokeSessionFn = func(context.Context, uuid.UUID) error { return store.ErrNotFound }
 			},
 			wantCode:    http.StatusNotFound,
 			wantErrCode: "NOT_FOUND",
@@ -120,7 +121,7 @@ func TestSessionHandler_Revoke(t *testing.T) {
 			r := chi.NewRouter()
 			r.Delete("/sessions/{id}", h.Revoke)
 
-			req := requestWithUser("DELETE", "/sessions/"+tt.sessionID, nil, "usr_alice")
+			req := requestWithUser("DELETE", "/sessions/"+tt.sessionID, nil, testUser1)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -148,9 +149,9 @@ func TestSessionHandler_RevokeAll(t *testing.T) {
 	}{
 		{
 			name:  "success",
-			query: "?current_session_id=ses_current",
+			query: "?current_session_id=" + testSesCurrent.String(),
 			setupStore: func(ms *mockSessionStore) {
-				ms.RevokeAllSessionsExceptFn = func(context.Context, string, string) (int64, error) {
+				ms.RevokeAllSessionsExceptFn = func(context.Context, uuid.UUID, uuid.UUID) (int64, error) {
 					return 3, nil
 				}
 			},
@@ -174,7 +175,7 @@ func TestSessionHandler_RevokeAll(t *testing.T) {
 			r := chi.NewRouter()
 			r.Delete("/sessions", h.RevokeAll)
 
-			req := requestWithUser("DELETE", "/sessions"+tt.query, nil, "usr_alice")
+			req := requestWithUser("DELETE", "/sessions"+tt.query, nil, testUser1)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 

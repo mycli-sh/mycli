@@ -7,6 +7,8 @@ package dbgen
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -46,7 +48,7 @@ const getUserByID = `-- name: GetUserByID :one
 SELECT id, email, username, created_at FROM users WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
@@ -90,8 +92,8 @@ UPDATE users SET username = $2 WHERE id = $1 AND username IS NULL
 `
 
 type SetUsernameParams struct {
-	ID       string  `json:"id"`
-	Username *string `json:"username"`
+	ID       uuid.UUID `json:"id"`
+	Username *string   `json:"username"`
 }
 
 func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) (int64, error) {

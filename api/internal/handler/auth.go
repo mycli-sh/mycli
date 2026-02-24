@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/authservice"
 	"mycli.sh/api/internal/config"
@@ -191,6 +192,12 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, err := uuid.Parse(sub)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "INVALID_TOKEN", "invalid token subject")
+		return
+	}
+
 	// Validate refresh token against sessions table
 	refreshTokenHash := authservice.HashToken(req.RefreshToken)
 	sess, err := h.store.GetSessionByTokenHash(r.Context(), refreshTokenHash)
@@ -208,7 +215,7 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 	}
 	_ = h.store.UpdateSessionLastUsed(r.Context(), sess.ID)
 
-	accessToken, newRefreshToken, err := h.auth.GenerateTokenPair(sub)
+	accessToken, newRefreshToken, err := h.auth.GenerateTokenPair(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "TOKEN_ERROR", "failed to generate token")
 		return
@@ -217,7 +224,7 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 	_ = h.store.UpdateSessionRefreshTokenHash(r.Context(), sess.ID, newRefreshTokenHash)
 
 	slog.Info("auth.refresh",
-		"user_id", sub,
+		"user_id", userID,
 		"session_id", sess.ID,
 	)
 
@@ -527,7 +534,7 @@ func (h *AuthHandler) WebVerify(w http.ResponseWriter, r *http.Request) {
 // the session to revoke, falling back to a refresh_token in the request body.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
-	if userID == "" {
+	if userID == uuid.Nil {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated")
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/model"
 	"mycli.sh/api/internal/store"
@@ -22,9 +23,9 @@ import (
 type Store interface {
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	CreateUser(ctx context.Context, email string) (*model.User, error)
-	GetUserByID(ctx context.Context, id string) (*model.User, error)
-	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
-	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
+	GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+	CreateSession(ctx context.Context, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
+	RevokeSessionByDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) error
 }
 
 const (
@@ -69,7 +70,7 @@ func (s *Service) FindOrCreateUser(ctx context.Context, email string) (*model.Us
 // IssueTokens generates JWT tokens (access 15m + refresh 30d), revokes any
 // existing session for the same device, creates a new session, and checks
 // whether the user still needs to set a username.
-func (s *Service) IssueTokens(ctx context.Context, userID string, r *http.Request) (*TokenResult, error) {
+func (s *Service) IssueTokens(ctx context.Context, userID uuid.UUID, r *http.Request) (*TokenResult, error) {
 	accessToken, refreshToken, err := s.GenerateTokenPair(userID)
 	if err != nil {
 		return nil, err
@@ -85,7 +86,7 @@ func (s *Service) IssueTokens(ctx context.Context, userID string, r *http.Reques
 
 	var sessionID string
 	if sess, err := s.store.CreateSession(ctx, userID, refreshTokenHash, meta.UserAgent, meta.IPAddress, meta.DeviceID, meta.DeviceName, time.Now().Add(RefreshTokenDuration)); err == nil {
-		sessionID = sess.ID
+		sessionID = sess.ID.String()
 	}
 
 	needsUsername := false
@@ -102,12 +103,13 @@ func (s *Service) IssueTokens(ctx context.Context, userID string, r *http.Reques
 }
 
 // GenerateTokenPair creates a matched access + refresh JWT pair for the given user.
-func (s *Service) GenerateTokenPair(userID string) (accessToken, refreshToken string, err error) {
-	accessToken, err = GenerateJWTToken(s.jwtSecret, userID, "access", AccessTokenDuration)
+func (s *Service) GenerateTokenPair(userID uuid.UUID) (accessToken, refreshToken string, err error) {
+	sub := userID.String()
+	accessToken, err = GenerateJWTToken(s.jwtSecret, sub, "access", AccessTokenDuration)
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err = GenerateJWTToken(s.jwtSecret, userID, "refresh", RefreshTokenDuration)
+	refreshToken, err = GenerateJWTToken(s.jwtSecret, sub, "refresh", RefreshTokenDuration)
 	if err != nil {
 		return "", "", err
 	}

@@ -8,32 +8,33 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/model"
 	"mycli.sh/api/internal/store"
 )
 
 type mockCatalogStore struct {
-	ListCommandsByOwnerFn       func(ctx context.Context, ownerID, cursor string, limit int, query string) ([]model.Command, string, error)
-	GetLatestVersionByCommandFn func(ctx context.Context, commandID string) (*model.CommandVersion, error)
-	GetInstalledLibrariesFn     func(ctx context.Context, userID string) ([]model.Library, error)
-	GetOwnerNameFn              func(ctx context.Context, ownerID string) (string, error)
-	ListCommandsByLibraryFn     func(ctx context.Context, libraryID string) ([]store.LibraryCommand, error)
+	ListCommandsByOwnerFn       func(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error)
+	GetLatestVersionByCommandFn func(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error)
+	GetInstalledLibrariesFn     func(ctx context.Context, userID uuid.UUID) ([]model.Library, error)
+	GetOwnerNameFn              func(ctx context.Context, ownerID uuid.UUID) (string, error)
+	ListCommandsByLibraryFn     func(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error)
 }
 
-func (m *mockCatalogStore) ListCommandsByOwner(ctx context.Context, ownerID, cursor string, limit int, query string) ([]model.Command, string, error) {
+func (m *mockCatalogStore) ListCommandsByOwner(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error) {
 	return m.ListCommandsByOwnerFn(ctx, ownerID, cursor, limit, query)
 }
-func (m *mockCatalogStore) GetLatestVersionByCommand(ctx context.Context, commandID string) (*model.CommandVersion, error) {
+func (m *mockCatalogStore) GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error) {
 	return m.GetLatestVersionByCommandFn(ctx, commandID)
 }
-func (m *mockCatalogStore) GetInstalledLibraries(ctx context.Context, userID string) ([]model.Library, error) {
+func (m *mockCatalogStore) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error) {
 	return m.GetInstalledLibrariesFn(ctx, userID)
 }
-func (m *mockCatalogStore) GetOwnerName(ctx context.Context, ownerID string) (string, error) {
+func (m *mockCatalogStore) GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error) {
 	return m.GetOwnerNameFn(ctx, ownerID)
 }
-func (m *mockCatalogStore) ListCommandsByLibrary(ctx context.Context, libraryID string) ([]store.LibraryCommand, error) {
+func (m *mockCatalogStore) ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error) {
 	return m.ListCommandsByLibraryFn(ctx, libraryID)
 }
 
@@ -49,18 +50,18 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 		{
 			name: "returns user commands with versions",
 			setupStore: func(ms *mockCatalogStore) {
-				ms.ListCommandsByOwnerFn = func(_ context.Context, _ string, _ string, _ int, _ string) ([]model.Command, string, error) {
+				ms.ListCommandsByOwnerFn = func(_ context.Context, _ uuid.UUID, _ string, _ int, _ string) ([]model.Command, string, error) {
 					return []model.Command{
-						{ID: "cmd_1", Slug: "deploy", Name: "Deploy", UpdatedAt: now},
+						{ID: testCmd1, Slug: "deploy", Name: "Deploy", UpdatedAt: now},
 					}, "", nil
 				}
-				ms.GetLatestVersionByCommandFn = func(_ context.Context, cmdID string) (*model.CommandVersion, error) {
-					if cmdID == "cmd_1" {
+				ms.GetLatestVersionByCommandFn = func(_ context.Context, cmdID uuid.UUID) (*model.CommandVersion, error) {
+					if cmdID == testCmd1 {
 						return &model.CommandVersion{Version: 2, SpecHash: "hash1"}, nil
 					}
 					return nil, store.ErrNotFound
 				}
-				ms.GetInstalledLibrariesFn = func(context.Context, string) ([]model.Library, error) {
+				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
 					return nil, nil
 				}
 			},
@@ -70,10 +71,10 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 		{
 			name: "empty catalog",
 			setupStore: func(ms *mockCatalogStore) {
-				ms.ListCommandsByOwnerFn = func(context.Context, string, string, int, string) ([]model.Command, string, error) {
+				ms.ListCommandsByOwnerFn = func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 					return nil, "", nil
 				}
-				ms.GetInstalledLibrariesFn = func(context.Context, string) ([]model.Library, error) {
+				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
 					return nil, nil
 				}
 			},
@@ -83,24 +84,23 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 		{
 			name: "includes library commands",
 			setupStore: func(ms *mockCatalogStore) {
-				ms.ListCommandsByOwnerFn = func(context.Context, string, string, int, string) ([]model.Command, string, error) {
+				ms.ListCommandsByOwnerFn = func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 					return nil, "", nil
 				}
-				ownerID := "usr_lib_owner"
-				ms.GetInstalledLibrariesFn = func(context.Context, string) ([]model.Library, error) {
+				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
 					return []model.Library{
-						{ID: "lib_1", Slug: "kubernetes", OwnerID: &ownerID},
+						{ID: testLib1, Slug: "kubernetes", OwnerID: &testLibOwner},
 					}, nil
 				}
-				ms.GetOwnerNameFn = func(context.Context, string) (string, error) {
+				ms.GetOwnerNameFn = func(context.Context, uuid.UUID) (string, error) {
 					return "kube-author", nil
 				}
-				ms.ListCommandsByLibraryFn = func(context.Context, string) ([]store.LibraryCommand, error) {
+				ms.ListCommandsByLibraryFn = func(context.Context, uuid.UUID) ([]store.LibraryCommand, error) {
 					return []store.LibraryCommand{
-						{CommandID: "cmd_lib_1", Slug: "deploy-k8s", Name: "Deploy K8s", UpdatedAt: now},
+						{CommandID: testCmdLib1, Slug: "deploy-k8s", Name: "Deploy K8s", UpdatedAt: now},
 					}, nil
 				}
-				ms.GetLatestVersionByCommandFn = func(_ context.Context, cmdID string) (*model.CommandVersion, error) {
+				ms.GetLatestVersionByCommandFn = func(_ context.Context, cmdID uuid.UUID) (*model.CommandVersion, error) {
 					return &model.CommandVersion{Version: 1, SpecHash: "libhash"}, nil
 				}
 			},
@@ -110,15 +110,15 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 		{
 			name: "skips commands without versions",
 			setupStore: func(ms *mockCatalogStore) {
-				ms.ListCommandsByOwnerFn = func(context.Context, string, string, int, string) ([]model.Command, string, error) {
+				ms.ListCommandsByOwnerFn = func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 					return []model.Command{
-						{ID: "cmd_no_ver", Slug: "no-version", Name: "No Version", UpdatedAt: now},
+						{ID: testCmd1, Slug: "no-version", Name: "No Version", UpdatedAt: now},
 					}, "", nil
 				}
-				ms.GetLatestVersionByCommandFn = func(context.Context, string) (*model.CommandVersion, error) {
+				ms.GetLatestVersionByCommandFn = func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
 					return nil, store.ErrNotFound
 				}
-				ms.GetInstalledLibrariesFn = func(context.Context, string) ([]model.Library, error) {
+				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
 					return nil, nil
 				}
 			},
@@ -136,7 +136,7 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 			r := chi.NewRouter()
 			r.Get("/catalog", h.GetCatalog)
 
-			req := requestWithUser("GET", "/catalog", nil, "usr_owner")
+			req := requestWithUser("GET", "/catalog", nil, testUser2)
 			if tt.ifNoneMatch != "" {
 				req.Header.Set("If-None-Match", tt.ifNoneMatch)
 			}
@@ -167,15 +167,15 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 func TestCatalogHandler_GetCatalog_ETag(t *testing.T) {
 	now := time.Now()
 	ms := &mockCatalogStore{
-		ListCommandsByOwnerFn: func(context.Context, string, string, int, string) ([]model.Command, string, error) {
+		ListCommandsByOwnerFn: func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 			return []model.Command{
-				{ID: "cmd_1", Slug: "deploy", Name: "Deploy", UpdatedAt: now},
+				{ID: testCmd1, Slug: "deploy", Name: "Deploy", UpdatedAt: now},
 			}, "", nil
 		},
-		GetLatestVersionByCommandFn: func(context.Context, string) (*model.CommandVersion, error) {
+		GetLatestVersionByCommandFn: func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
 			return &model.CommandVersion{Version: 1, SpecHash: "hash1"}, nil
 		},
-		GetInstalledLibrariesFn: func(context.Context, string) ([]model.Library, error) {
+		GetInstalledLibrariesFn: func(context.Context, uuid.UUID) ([]model.Library, error) {
 			return nil, nil
 		},
 	}
@@ -185,7 +185,7 @@ func TestCatalogHandler_GetCatalog_ETag(t *testing.T) {
 	r.Get("/catalog", h.GetCatalog)
 
 	// First request — get the ETag
-	req := requestWithUser("GET", "/catalog", nil, "usr_owner")
+	req := requestWithUser("GET", "/catalog", nil, testUser2)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -198,7 +198,7 @@ func TestCatalogHandler_GetCatalog_ETag(t *testing.T) {
 	}
 
 	// Second request — with matching ETag
-	req = requestWithUser("GET", "/catalog", nil, "usr_owner")
+	req = requestWithUser("GET", "/catalog", nil, testUser2)
 	req.Header.Set("If-None-Match", etag)
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, req)

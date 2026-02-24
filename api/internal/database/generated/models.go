@@ -8,36 +8,37 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Command struct {
-	ID          string             `json:"id"`
-	OwnerUserID string             `json:"owner_user_id"`
+	ID          uuid.UUID          `json:"id"`
+	OwnerUserID uuid.UUID          `json:"owner_user_id"`
 	Name        string             `json:"name"`
 	Slug        string             `json:"slug"`
 	Description string             `json:"description"`
 	Tags        json.RawMessage    `json:"tags"`
-	LibraryID   *string            `json:"library_id"`
+	LibraryID   *uuid.UUID         `json:"library_id"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt   *time.Time         `json:"deleted_at"`
 }
 
 type CommandVersion struct {
-	ID        string             `json:"id"`
-	CommandID string             `json:"command_id"`
+	ID        uuid.UUID          `json:"id"`
+	CommandID uuid.UUID          `json:"command_id"`
 	Version   int32              `json:"version"`
 	SpecJson  json.RawMessage    `json:"spec_json"`
 	SpecHash  string             `json:"spec_hash"`
 	Message   string             `json:"message"`
-	CreatedBy string             `json:"created_by"`
+	CreatedBy uuid.UUID          `json:"created_by"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type Library struct {
-	ID            string             `json:"id"`
-	OwnerID       *string            `json:"owner_id"`
+	ID            uuid.UUID          `json:"id"`
+	OwnerID       *uuid.UUID         `json:"owner_id"`
 	Slug          string             `json:"slug"`
 	Name          string             `json:"name"`
 	Description   string             `json:"description"`
@@ -50,25 +51,25 @@ type Library struct {
 }
 
 type LibraryInstallation struct {
-	ID        string             `json:"id"`
-	UserID    string             `json:"user_id"`
-	LibraryID string             `json:"library_id"`
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	LibraryID uuid.UUID          `json:"library_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type LibraryRelease struct {
-	ID           string             `json:"id"`
-	LibraryID    string             `json:"library_id"`
+	ID           uuid.UUID          `json:"id"`
+	LibraryID    uuid.UUID          `json:"library_id"`
 	Version      string             `json:"version"`
 	Tag          string             `json:"tag"`
 	CommitHash   string             `json:"commit_hash"`
 	CommandCount int32              `json:"command_count"`
-	ReleasedBy   string             `json:"released_by"`
+	ReleasedBy   uuid.UUID          `json:"released_by"`
 	ReleasedAt   pgtype.Timestamptz `json:"released_at"`
 }
 
 type MagicLink struct {
-	ID          string             `json:"id"`
+	ID          uuid.UUID          `json:"id"`
 	Email       string             `json:"email"`
 	TokenHash   string             `json:"token_hash"`
 	DeviceCode  string             `json:"device_code"`
@@ -77,13 +78,13 @@ type MagicLink struct {
 	UsedAt      *time.Time         `json:"used_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	Authorized  bool               `json:"authorized"`
-	UserID      *string            `json:"user_id"`
+	UserID      *uuid.UUID         `json:"user_id"`
 	OtpAttempts int32              `json:"otp_attempts"`
 }
 
 type Session struct {
-	ID               string             `json:"id"`
-	UserID           string             `json:"user_id"`
+	ID               uuid.UUID          `json:"id"`
+	UserID           uuid.UUID          `json:"user_id"`
 	RefreshTokenHash string             `json:"refresh_token_hash"`
 	UserAgent        string             `json:"user_agent"`
 	IpAddress        string             `json:"ip_address"`
@@ -96,7 +97,7 @@ type Session struct {
 }
 
 type User struct {
-	ID        string             `json:"id"`
+	ID        uuid.UUID          `json:"id"`
 	Email     string             `json:"email"`
 	Username  *string            `json:"username"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`

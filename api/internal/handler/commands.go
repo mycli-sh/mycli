@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"mycli.sh/api/internal/middleware"
@@ -115,7 +116,11 @@ func (h *CommandHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CommandHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid ID format")
+		return
+	}
 	userID := middleware.GetUserID(r.Context())
 
 	cmd, err := h.store.GetCommandByID(r.Context(), id)
@@ -152,7 +157,11 @@ func (h *CommandHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CommandHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid ID format")
+		return
+	}
 	userID := middleware.GetUserID(r.Context())
 
 	cmd, err := h.store.GetCommandByID(r.Context(), id)
@@ -179,7 +188,11 @@ func (h *CommandHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CommandHandler) PublishVersion(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid ID format")
+		return
+	}
 	userID := middleware.GetUserID(r.Context())
 
 	cmd, err := h.store.GetCommandByID(r.Context(), id)
@@ -252,7 +265,11 @@ func (h *CommandHandler) PublishVersion(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *CommandHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid ID format")
+		return
+	}
 	userID := middleware.GetUserID(r.Context())
 	versionStr := chi.URLParam(r, "version")
 

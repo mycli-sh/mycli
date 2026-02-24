@@ -12,20 +12,33 @@ sql:
         emit_empty_slices: true
         emit_interface: true
         overrides:
+          # UUID -> uuid.UUID
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
           # JSONB -> json.RawMessage
           - db_type: "jsonb"
             go_type:
               import: "encoding/json"
               type: "RawMessage"
-          # Nullable TEXT -> *string
+          # Nullable UUID -> *uuid.UUID
           - column: "commands.library_id"
             go_type:
-              type: "string"
+              import: "github.com/google/uuid"
+              type: "UUID"
               pointer: true
           - column: "libraries.owner_id"
             go_type:
-              type: "string"
+              import: "github.com/google/uuid"
+              type: "UUID"
               pointer: true
+          - column: "magic_links.user_id"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+          # Nullable TEXT -> *string
           - column: "libraries.git_url"
             go_type:
               type: "string"
@@ -39,10 +52,6 @@ sql:
               type: "string"
               pointer: true
           - column: "magic_links.otp_hash"
-            go_type:
-              type: "string"
-              pointer: true
-          - column: "magic_links.user_id"
             go_type:
               type: "string"
               pointer: true

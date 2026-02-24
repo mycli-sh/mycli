@@ -4,12 +4,14 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"mycli.sh/api/internal/model"
 )
 
 // UserLookup is the minimal interface needed by RequireUsername.
 type UserLookup interface {
-	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error)
 }
 
 // RequireUsername returns middleware that blocks requests from users who
@@ -18,7 +20,7 @@ func RequireUsername(lookup UserLookup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID := GetUserID(r.Context())
-			if userID == "" {
+			if userID == uuid.Nil {
 				writeJSONError(w, http.StatusUnauthorized, `{"error":{"code":"UNAUTHORIZED","message":"missing user context"}}`)
 				return
 			}

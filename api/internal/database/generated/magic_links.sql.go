@@ -8,6 +8,7 @@ package dbgen
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -17,8 +18,8 @@ WHERE device_code = $1 AND expires_at > NOW()
 `
 
 type AuthorizeMagicLinkByDeviceCodeParams struct {
-	DeviceCode string  `json:"device_code"`
-	UserID     *string `json:"user_id"`
+	DeviceCode string     `json:"device_code"`
+	UserID     *uuid.UUID `json:"user_id"`
 }
 
 func (q *Queries) AuthorizeMagicLinkByDeviceCode(ctx context.Context, arg AuthorizeMagicLinkByDeviceCodeParams) (int64, error) {
@@ -177,7 +178,7 @@ WHERE id = $1
 RETURNING otp_attempts
 `
 
-func (q *Queries) IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int32, error) {
+func (q *Queries) IncrementMagicLinkOTPAttempts(ctx context.Context, id uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, incrementMagicLinkOTPAttempts, id)
 	var otp_attempts int32
 	err := row.Scan(&otp_attempts)
@@ -188,7 +189,7 @@ const markMagicLinkUsed = `-- name: MarkMagicLinkUsed :execrows
 UPDATE magic_links SET used_at = NOW() WHERE id = $1 AND used_at IS NULL
 `
 
-func (q *Queries) MarkMagicLinkUsed(ctx context.Context, id string) (int64, error) {
+func (q *Queries) MarkMagicLinkUsed(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, markMagicLinkUsed, id)
 	if err != nil {
 		return 0, err

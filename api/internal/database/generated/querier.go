@@ -6,11 +6,13 @@ package dbgen
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
 	AuthorizeMagicLinkByDeviceCode(ctx context.Context, arg AuthorizeMagicLinkByDeviceCodeParams) (int64, error)
-	CountCommandsByOwner(ctx context.Context, ownerUserID string) (int64, error)
+	CountCommandsByOwner(ctx context.Context, ownerUserID uuid.UUID) (int64, error)
 	CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int32, error)
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (Command, error)
 	CreateCommandForLibrary(ctx context.Context, arg CreateCommandForLibraryParams) (Command, error)
@@ -20,15 +22,15 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
 	CreateUser(ctx context.Context, btrim string) (User, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (CommandVersion, error)
-	DecrementInstallCount(ctx context.Context, id string) error
+	DecrementInstallCount(ctx context.Context, id uuid.UUID) error
 	DeleteExpiredMagicLinks(ctx context.Context) error
 	DeleteMagicLinksByDeviceCode(ctx context.Context, deviceCode string) error
-	GetCommandByID(ctx context.Context, id string) (Command, error)
+	GetCommandByID(ctx context.Context, id uuid.UUID) (Command, error)
 	GetCommandByLibraryAndSlug(ctx context.Context, arg GetCommandByLibraryAndSlugParams) (Command, error)
 	GetCommandByOwnerAndSlug(ctx context.Context, arg GetCommandByOwnerAndSlugParams) (Command, error)
-	GetInstalledLibraries(ctx context.Context, userID string) ([]Library, error)
-	GetLatestHashByCommand(ctx context.Context, commandID string) (string, error)
-	GetLatestVersionByCommand(ctx context.Context, commandID string) (CommandVersion, error)
+	GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]Library, error)
+	GetLatestHashByCommand(ctx context.Context, commandID uuid.UUID) (string, error)
+	GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (CommandVersion, error)
 	GetLibraryByOwnerSlug(ctx context.Context, arg GetLibraryByOwnerSlugParams) (Library, error)
 	GetLibraryByOwnerUsernameAndSlug(ctx context.Context, arg GetLibraryByOwnerUsernameAndSlugParams) (Library, error)
 	GetLibraryBySlug(ctx context.Context, slug string) (Library, error)
@@ -36,33 +38,33 @@ type Querier interface {
 	GetMagicLinkByDeviceCode(ctx context.Context, deviceCode string) (MagicLink, error)
 	GetMagicLinkByOTPHash(ctx context.Context, otpHash *string) (MagicLink, error)
 	GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (MagicLink, error)
-	GetOwnerName(ctx context.Context, id string) (*string, error)
+	GetOwnerName(ctx context.Context, id uuid.UUID) (*string, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (GetSessionByTokenHashRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
-	GetUserByID(ctx context.Context, id string) (User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByUsername(ctx context.Context, lower string) (User, error)
 	GetVersionByCommandAndVersion(ctx context.Context, arg GetVersionByCommandAndVersionParams) (CommandVersion, error)
-	IncrementInstallCount(ctx context.Context, id string) error
-	IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int32, error)
+	IncrementInstallCount(ctx context.Context, id uuid.UUID) error
+	IncrementMagicLinkOTPAttempts(ctx context.Context, id uuid.UUID) (int32, error)
 	InstallLibrary(ctx context.Context, arg InstallLibraryParams) error
 	IsLibraryInstalled(ctx context.Context, arg IsLibraryInstalledParams) (bool, error)
 	IsUsernameTaken(ctx context.Context, lower string) (bool, error)
 	LibraryReleaseExists(ctx context.Context, arg LibraryReleaseExistsParams) (bool, error)
-	ListCommandsByLibrary(ctx context.Context, libraryID *string) ([]ListCommandsByLibraryRow, error)
+	ListCommandsByLibrary(ctx context.Context, libraryID *uuid.UUID) ([]ListCommandsByLibraryRow, error)
 	ListLibraries(ctx context.Context) ([]Library, error)
-	ListLibraryReleases(ctx context.Context, libraryID string) ([]LibraryRelease, error)
-	ListSessionsByUser(ctx context.Context, userID string) ([]ListSessionsByUserRow, error)
-	ListVersionsByCommand(ctx context.Context, commandID string) ([]CommandVersion, error)
-	MarkMagicLinkUsed(ctx context.Context, id string) (int64, error)
+	ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]LibraryRelease, error)
+	ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ListSessionsByUserRow, error)
+	ListVersionsByCommand(ctx context.Context, commandID uuid.UUID) ([]CommandVersion, error)
+	MarkMagicLinkUsed(ctx context.Context, id uuid.UUID) (int64, error)
 	RevokeAllSessionsExcept(ctx context.Context, arg RevokeAllSessionsExceptParams) (int64, error)
-	RevokeSession(ctx context.Context, id string) (int64, error)
+	RevokeSession(ctx context.Context, id uuid.UUID) (int64, error)
 	RevokeSessionByDeviceID(ctx context.Context, arg RevokeSessionByDeviceIDParams) error
 	SetUsername(ctx context.Context, arg SetUsernameParams) (int64, error)
-	SoftDeleteCommand(ctx context.Context, id string) (int64, error)
+	SoftDeleteCommand(ctx context.Context, id uuid.UUID) (int64, error)
 	UninstallLibrary(ctx context.Context, arg UninstallLibraryParams) (int64, error)
 	UpdateCommandMeta(ctx context.Context, arg UpdateCommandMetaParams) error
 	UpdateLibraryLatestVersion(ctx context.Context, arg UpdateLibraryLatestVersionParams) error
-	UpdateSessionLastUsed(ctx context.Context, id string) error
+	UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error
 	UpdateSessionRefreshTokenHash(ctx context.Context, arg UpdateSessionRefreshTokenHashParams) error
 }
 

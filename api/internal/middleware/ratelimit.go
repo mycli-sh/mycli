@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type bucket struct {
@@ -88,8 +90,8 @@ func IPKey(r *http.Request) string {
 }
 
 func UserKey(r *http.Request) string {
-	if uid := GetUserID(r.Context()); uid != "" {
-		return uid
+	if uid := GetUserID(r.Context()); uid != uuid.Nil {
+		return uid.String()
 	}
 	return r.RemoteAddr
 }

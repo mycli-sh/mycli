@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/config"
 	"mycli.sh/api/internal/middleware"
@@ -19,7 +20,7 @@ import (
 	"mycli.sh/pkg/spec"
 )
 
-const systemUserID = "usr_system"
+var systemUserID = uuid.MustParse("00000000-0000-7000-8000-000000000001")
 
 var tagPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 
@@ -113,7 +114,7 @@ func (h *LibraryHandler) GetDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	installed := false
-	if userID := middleware.GetUserID(r.Context()); userID != "" {
+	if userID := middleware.GetUserID(r.Context()); userID != uuid.Nil {
 		installed = h.store.IsLibraryInstalled(r.Context(), userID, lib.ID)
 	}
 
@@ -126,7 +127,7 @@ func (h *LibraryHandler) GetDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 // publishCommands publishes command specs to a library, creating or updating commands as needed.
-func (h *LibraryHandler) publishCommands(ctx context.Context, userID, libraryID string, commands []json.RawMessage) (int, error) {
+func (h *LibraryHandler) publishCommands(ctx context.Context, userID, libraryID uuid.UUID, commands []json.RawMessage) (int, error) {
 	published := 0
 	for _, cmdJSON := range commands {
 		parsed, err := spec.Parse(cmdJSON)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -17,7 +18,7 @@ import (
 
 // LibraryCommand is a lightweight struct for library command listings.
 type LibraryCommand struct {
-	CommandID   string    `json:"command_id"`
+	CommandID   uuid.UUID `json:"command_id"`
 	Slug        string    `json:"slug"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
@@ -70,7 +71,7 @@ func (s *Store) CreateUser(ctx context.Context, email string) (*model.User, erro
 	return &m, nil
 }
 
-func (s *Store) GetUserByID(ctx context.Context, id string) (*model.User, error) {
+func (s *Store) GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -95,7 +96,7 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*model.User, 
 	return &m, nil
 }
 
-func (s *Store) SetUsername(ctx context.Context, userID, username string) error {
+func (s *Store) SetUsername(ctx context.Context, userID uuid.UUID, username string) error {
 	rows, err := s.q.SetUsername(ctx, dbgen.SetUsernameParams{
 		ID:       userID,
 		Username: &username,
@@ -133,7 +134,7 @@ func (s *Store) IsUsernameTaken(ctx context.Context, username string) (bool, err
 // Commands
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateCommand(ctx context.Context, ownerID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
+func (s *Store) CreateCommand(ctx context.Context, ownerID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
 	if tags == nil {
 		tags = json.RawMessage(`[]`)
 	}
@@ -151,7 +152,7 @@ func (s *Store) CreateCommand(ctx context.Context, ownerID, name, slug, descript
 	return &m, nil
 }
 
-func (s *Store) GetCommandByID(ctx context.Context, id string) (*model.Command, error) {
+func (s *Store) GetCommandByID(ctx context.Context, id uuid.UUID) (*model.Command, error) {
 	c, err := s.q.GetCommandByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -163,7 +164,7 @@ func (s *Store) GetCommandByID(ctx context.Context, id string) (*model.Command, 
 	return &m, nil
 }
 
-func (s *Store) GetCommandByOwnerAndSlug(ctx context.Context, ownerID, slug string) (*model.Command, error) {
+func (s *Store) GetCommandByOwnerAndSlug(ctx context.Context, ownerID uuid.UUID, slug string) (*model.Command, error) {
 	c, err := s.q.GetCommandByOwnerAndSlug(ctx, dbgen.GetCommandByOwnerAndSlugParams{
 		OwnerUserID: ownerID,
 		Slug:        slug,
@@ -178,7 +179,7 @@ func (s *Store) GetCommandByOwnerAndSlug(ctx context.Context, ownerID, slug stri
 	return &m, nil
 }
 
-func (s *Store) GetCommandByLibraryAndSlug(ctx context.Context, libraryID, slug string) (*model.Command, error) {
+func (s *Store) GetCommandByLibraryAndSlug(ctx context.Context, libraryID uuid.UUID, slug string) (*model.Command, error) {
 	c, err := s.q.GetCommandByLibraryAndSlug(ctx, dbgen.GetCommandByLibraryAndSlugParams{
 		LibraryID: &libraryID,
 		Slug:      slug,
@@ -193,7 +194,7 @@ func (s *Store) GetCommandByLibraryAndSlug(ctx context.Context, libraryID, slug 
 	return &m, nil
 }
 
-func (s *Store) CreateCommandForLibrary(ctx context.Context, ownerID, libraryID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
+func (s *Store) CreateCommandForLibrary(ctx context.Context, ownerID, libraryID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
 	if tags == nil {
 		tags = json.RawMessage(`[]`)
 	}
@@ -212,7 +213,7 @@ func (s *Store) CreateCommandForLibrary(ctx context.Context, ownerID, libraryID,
 	return &m, nil
 }
 
-func (s *Store) CountCommandsByOwner(ctx context.Context, ownerID string) (int, error) {
+func (s *Store) CountCommandsByOwner(ctx context.Context, ownerID uuid.UUID) (int, error) {
 	count, err := s.q.CountCommandsByOwner(ctx, ownerID)
 	if err != nil {
 		return 0, fmt.Errorf("count commands by owner: %w", err)
@@ -220,7 +221,7 @@ func (s *Store) CountCommandsByOwner(ctx context.Context, ownerID string) (int, 
 	return int(count), nil
 }
 
-func (s *Store) UpdateCommandMeta(ctx context.Context, id, name, description string, tags json.RawMessage) error {
+func (s *Store) UpdateCommandMeta(ctx context.Context, id uuid.UUID, name, description string, tags json.RawMessage) error {
 	return s.q.UpdateCommandMeta(ctx, dbgen.UpdateCommandMetaParams{
 		ID:          id,
 		Name:        name,
@@ -229,7 +230,7 @@ func (s *Store) UpdateCommandMeta(ctx context.Context, id, name, description str
 	})
 }
 
-func (s *Store) SoftDeleteCommand(ctx context.Context, id string) error {
+func (s *Store) SoftDeleteCommand(ctx context.Context, id uuid.UUID) error {
 	rows, err := s.q.SoftDeleteCommand(ctx, id)
 	if err != nil {
 		return fmt.Errorf("soft delete command: %w", err)
@@ -244,7 +245,7 @@ func (s *Store) SoftDeleteCommand(ctx context.Context, id string) error {
 // Command Versions
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateVersion(ctx context.Context, commandID string, version int, specJSON json.RawMessage, specHash, message, createdBy string) (*model.CommandVersion, error) {
+func (s *Store) CreateVersion(ctx context.Context, commandID uuid.UUID, version int, specJSON json.RawMessage, specHash, message string, createdBy uuid.UUID) (*model.CommandVersion, error) {
 	v, err := s.q.CreateVersion(ctx, dbgen.CreateVersionParams{
 		CommandID: commandID,
 		Version:   int32(version),
@@ -260,7 +261,7 @@ func (s *Store) CreateVersion(ctx context.Context, commandID string, version int
 	return &m, nil
 }
 
-func (s *Store) GetVersionByCommandAndVersion(ctx context.Context, commandID string, version int) (*model.CommandVersion, error) {
+func (s *Store) GetVersionByCommandAndVersion(ctx context.Context, commandID uuid.UUID, version int) (*model.CommandVersion, error) {
 	v, err := s.q.GetVersionByCommandAndVersion(ctx, dbgen.GetVersionByCommandAndVersionParams{
 		CommandID: commandID,
 		Version:   int32(version),
@@ -275,7 +276,7 @@ func (s *Store) GetVersionByCommandAndVersion(ctx context.Context, commandID str
 	return &m, nil
 }
 
-func (s *Store) GetLatestVersionByCommand(ctx context.Context, commandID string) (*model.CommandVersion, error) {
+func (s *Store) GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error) {
 	v, err := s.q.GetLatestVersionByCommand(ctx, commandID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -287,7 +288,7 @@ func (s *Store) GetLatestVersionByCommand(ctx context.Context, commandID string)
 	return &m, nil
 }
 
-func (s *Store) ListVersionsByCommand(ctx context.Context, commandID string) ([]model.CommandVersion, error) {
+func (s *Store) ListVersionsByCommand(ctx context.Context, commandID uuid.UUID) ([]model.CommandVersion, error) {
 	rows, err := s.q.ListVersionsByCommand(ctx, commandID)
 	if err != nil {
 		return nil, fmt.Errorf("list versions by command: %w", err)
@@ -299,7 +300,7 @@ func (s *Store) ListVersionsByCommand(ctx context.Context, commandID string) ([]
 	return versions, nil
 }
 
-func (s *Store) GetLatestHashByCommand(ctx context.Context, commandID string) (string, error) {
+func (s *Store) GetLatestHashByCommand(ctx context.Context, commandID uuid.UUID) (string, error) {
 	hash, err := s.q.GetLatestHashByCommand(ctx, commandID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -353,7 +354,7 @@ func (s *Store) GetMagicLinkByOTPHash(ctx context.Context, otpHash string) (*mod
 	return &m, nil
 }
 
-func (s *Store) MarkMagicLinkUsed(ctx context.Context, id string) error {
+func (s *Store) MarkMagicLinkUsed(ctx context.Context, id uuid.UUID) error {
 	rows, err := s.q.MarkMagicLinkUsed(ctx, id)
 	if err != nil {
 		return fmt.Errorf("mark magic link used: %w", err)
@@ -376,7 +377,7 @@ func (s *Store) GetMagicLinkByDeviceCode(ctx context.Context, deviceCode string)
 	return &m, nil
 }
 
-func (s *Store) AuthorizeMagicLinkByDeviceCode(ctx context.Context, deviceCode, userID string) error {
+func (s *Store) AuthorizeMagicLinkByDeviceCode(ctx context.Context, deviceCode string, userID uuid.UUID) error {
 	rows, err := s.q.AuthorizeMagicLinkByDeviceCode(ctx, dbgen.AuthorizeMagicLinkByDeviceCodeParams{
 		DeviceCode: deviceCode,
 		UserID:     &userID,
@@ -390,7 +391,7 @@ func (s *Store) AuthorizeMagicLinkByDeviceCode(ctx context.Context, deviceCode, 
 	return nil
 }
 
-func (s *Store) IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int, error) {
+func (s *Store) IncrementMagicLinkOTPAttempts(ctx context.Context, id uuid.UUID) (int, error) {
 	attempts, err := s.q.IncrementMagicLinkOTPAttempts(ctx, id)
 	if err != nil {
 		return 0, fmt.Errorf("increment magic link otp attempts: %w", err)
@@ -409,7 +410,7 @@ func (s *Store) DeleteExpiredMagicLinks(ctx context.Context) error {
 // ConsumeAuthorizedDeviceCode atomically deletes all magic links for the given
 // device code, revokes any existing session for the device, and creates a new
 // session — all within a single transaction.
-func (s *Store) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
+func (s *Store) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode string, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
 	var session *model.Session
 	err := s.withTx(ctx, func(tx *Store) error {
 		if err := tx.q.DeleteMagicLinksByDeviceCode(ctx, deviceCode); err != nil {
@@ -447,7 +448,7 @@ func (s *Store) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode, use
 // Sessions
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
+func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
 	sess, err := s.q.CreateSession(ctx, dbgen.CreateSessionParams{
 		UserID:           userID,
 		RefreshTokenHash: refreshTokenHash,
@@ -464,7 +465,7 @@ func (s *Store) CreateSession(ctx context.Context, userID, refreshTokenHash, use
 	return &m, nil
 }
 
-func (s *Store) ListSessionsByUser(ctx context.Context, userID string) ([]model.Session, error) {
+func (s *Store) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]model.Session, error) {
 	rows, err := s.q.ListSessionsByUser(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -488,7 +489,7 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (*m
 	return &m, nil
 }
 
-func (s *Store) RevokeSession(ctx context.Context, id string) error {
+func (s *Store) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	rows, err := s.q.RevokeSession(ctx, id)
 	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
@@ -499,7 +500,7 @@ func (s *Store) RevokeSession(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Store) RevokeAllSessionsExcept(ctx context.Context, userID, exceptID string) (int64, error) {
+func (s *Store) RevokeAllSessionsExcept(ctx context.Context, userID, exceptID uuid.UUID) (int64, error) {
 	count, err := s.q.RevokeAllSessionsExcept(ctx, dbgen.RevokeAllSessionsExceptParams{
 		UserID: userID,
 		ID:     exceptID,
@@ -510,21 +511,21 @@ func (s *Store) RevokeAllSessionsExcept(ctx context.Context, userID, exceptID st
 	return count, nil
 }
 
-func (s *Store) RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error {
+func (s *Store) RevokeSessionByDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) error {
 	return s.q.RevokeSessionByDeviceID(ctx, dbgen.RevokeSessionByDeviceIDParams{
 		UserID:   userID,
 		DeviceID: deviceID,
 	})
 }
 
-func (s *Store) UpdateSessionLastUsed(ctx context.Context, id string) error {
+func (s *Store) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error {
 	if err := s.q.UpdateSessionLastUsed(ctx, id); err != nil {
 		return fmt.Errorf("update session last used: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id, newHash string) error {
+func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string) error {
 	if err := s.q.UpdateSessionRefreshTokenHash(ctx, dbgen.UpdateSessionRefreshTokenHashParams{
 		ID:               id,
 		RefreshTokenHash: newHash,
@@ -558,7 +559,7 @@ func (s *Store) GetLibraryBySlug(ctx context.Context, slug string) (*model.Libra
 	return &m, nil
 }
 
-func (s *Store) GetLibraryByOwnerSlug(ctx context.Context, ownerID, slug string) (*model.Library, error) {
+func (s *Store) GetLibraryByOwnerSlug(ctx context.Context, ownerID uuid.UUID, slug string) (*model.Library, error) {
 	lib, err := s.q.GetLibraryByOwnerSlug(ctx, dbgen.GetLibraryByOwnerSlugParams{
 		OwnerID: &ownerID,
 		Slug:    slug,
@@ -600,7 +601,7 @@ func (s *Store) ListLibraries(ctx context.Context) ([]model.Library, error) {
 	return libs, nil
 }
 
-func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID, slug, name, description string, gitURL *string) (*model.Library, error) {
+func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string) (*model.Library, error) {
 	lib, err := s.q.CreateOrUpdateLibrary(ctx, dbgen.CreateOrUpdateLibraryParams{
 		OwnerID:     &ownerID,
 		Slug:        slug,
@@ -617,7 +618,7 @@ func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID, slug, name, 
 
 // InstallLibrary records that a user has installed a library, atomically
 // incrementing the install count inside a transaction.
-func (s *Store) InstallLibrary(ctx context.Context, userID, libraryID string) error {
+func (s *Store) InstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
 	return s.withTx(ctx, func(tx *Store) error {
 		if err := tx.q.InstallLibrary(ctx, dbgen.InstallLibraryParams{
 			UserID:    userID,
@@ -634,7 +635,7 @@ func (s *Store) InstallLibrary(ctx context.Context, userID, libraryID string) er
 
 // UninstallLibrary removes a user's installation and atomically decrements
 // the install count inside a transaction.
-func (s *Store) UninstallLibrary(ctx context.Context, userID, libraryID string) error {
+func (s *Store) UninstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
 	return s.withTx(ctx, func(tx *Store) error {
 		rows, err := tx.q.UninstallLibrary(ctx, dbgen.UninstallLibraryParams{
 			UserID:    userID,
@@ -652,7 +653,7 @@ func (s *Store) UninstallLibrary(ctx context.Context, userID, libraryID string) 
 	})
 }
 
-func (s *Store) GetInstalledLibraries(ctx context.Context, userID string) ([]model.Library, error) {
+func (s *Store) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error) {
 	rows, err := s.q.GetInstalledLibraries(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get installed libraries: %w", err)
@@ -664,7 +665,7 @@ func (s *Store) GetInstalledLibraries(ctx context.Context, userID string) ([]mod
 	return libs, nil
 }
 
-func (s *Store) IsLibraryInstalled(ctx context.Context, userID, libraryID string) bool {
+func (s *Store) IsLibraryInstalled(ctx context.Context, userID, libraryID uuid.UUID) bool {
 	exists, err := s.q.IsLibraryInstalled(ctx, dbgen.IsLibraryInstalledParams{
 		UserID:    userID,
 		LibraryID: libraryID,
@@ -672,7 +673,7 @@ func (s *Store) IsLibraryInstalled(ctx context.Context, userID, libraryID string
 	return err == nil && exists
 }
 
-func (s *Store) ListCommandsByLibrary(ctx context.Context, libraryID string) ([]LibraryCommand, error) {
+func (s *Store) ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]LibraryCommand, error) {
 	rows, err := s.q.ListCommandsByLibrary(ctx, &libraryID)
 	if err != nil {
 		return nil, fmt.Errorf("list commands by library: %w", err)
@@ -690,7 +691,7 @@ func (s *Store) ListCommandsByLibrary(ctx context.Context, libraryID string) ([]
 	return cmds, nil
 }
 
-func (s *Store) GetOwnerName(ctx context.Context, ownerID string) (string, error) {
+func (s *Store) GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error) {
 	username, err := s.q.GetOwnerName(ctx, ownerID)
 	if err != nil {
 		return "", fmt.Errorf("get owner name: %w", err)
@@ -701,7 +702,7 @@ func (s *Store) GetOwnerName(ctx context.Context, ownerID string) (string, error
 	return "", nil
 }
 
-func (s *Store) UpdateLibraryLatestVersion(ctx context.Context, libraryID, version string) error {
+func (s *Store) UpdateLibraryLatestVersion(ctx context.Context, libraryID uuid.UUID, version string) error {
 	return s.q.UpdateLibraryLatestVersion(ctx, dbgen.UpdateLibraryLatestVersionParams{
 		LatestVersion: &version,
 		ID:            libraryID,
@@ -712,7 +713,7 @@ func (s *Store) UpdateLibraryLatestVersion(ctx context.Context, libraryID, versi
 // Library Releases
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateLibraryRelease(ctx context.Context, libraryID, version, tag, commitHash string, commandCount int, releasedBy string) (*model.LibraryRelease, error) {
+func (s *Store) CreateLibraryRelease(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error) {
 	r, err := s.q.CreateLibraryRelease(ctx, dbgen.CreateLibraryReleaseParams{
 		LibraryID:    libraryID,
 		Version:      version,
@@ -728,7 +729,7 @@ func (s *Store) CreateLibraryRelease(ctx context.Context, libraryID, version, ta
 	return &m, nil
 }
 
-func (s *Store) GetLibraryRelease(ctx context.Context, libraryID, version string) (*model.LibraryRelease, error) {
+func (s *Store) GetLibraryRelease(ctx context.Context, libraryID uuid.UUID, version string) (*model.LibraryRelease, error) {
 	r, err := s.q.GetLibraryRelease(ctx, dbgen.GetLibraryReleaseParams{
 		LibraryID: libraryID,
 		Version:   version,
@@ -743,7 +744,7 @@ func (s *Store) GetLibraryRelease(ctx context.Context, libraryID, version string
 	return &m, nil
 }
 
-func (s *Store) ListLibraryReleases(ctx context.Context, libraryID string) ([]model.LibraryRelease, error) {
+func (s *Store) ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]model.LibraryRelease, error) {
 	rows, err := s.q.ListLibraryReleases(ctx, libraryID)
 	if err != nil {
 		return nil, fmt.Errorf("list library releases: %w", err)
@@ -755,7 +756,7 @@ func (s *Store) ListLibraryReleases(ctx context.Context, libraryID string) ([]mo
 	return releases, nil
 }
 
-func (s *Store) LibraryReleaseExists(ctx context.Context, libraryID, version string) (bool, error) {
+func (s *Store) LibraryReleaseExists(ctx context.Context, libraryID uuid.UUID, version string) (bool, error) {
 	exists, err := s.q.LibraryReleaseExists(ctx, dbgen.LibraryReleaseExistsParams{
 		LibraryID: libraryID,
 		Version:   version,

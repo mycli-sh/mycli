@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/middleware"
 	"mycli.sh/api/internal/store"
@@ -43,7 +44,7 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 	result := make([]sessionResponse, 0, len(sessions))
 	for _, s := range sessions {
 		result = append(result, sessionResponse{
-			ID:         s.ID,
+			ID:         s.ID.String(),
 			UserAgent:  s.UserAgent,
 			IPAddress:  s.IPAddress,
 			DeviceID:   s.DeviceID,
@@ -59,7 +60,11 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
-	sessionID := chi.URLParam(r, "id")
+	sessionID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid session ID format")
+		return
+	}
 
 	// Verify session belongs to user by listing their sessions
 	sessions, err := h.store.ListSessionsByUser(r.Context(), userID)
@@ -102,9 +107,15 @@ func (h *SessionHandler) RevokeAll(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
 	// Get current session ID from query param
-	currentSessionID := r.URL.Query().Get("current_session_id")
-	if currentSessionID == "" {
+	currentSessionIDStr := r.URL.Query().Get("current_session_id")
+	if currentSessionIDStr == "" {
 		writeError(w, http.StatusBadRequest, "MISSING_PARAM", "current_session_id query parameter is required")
+		return
+	}
+
+	currentSessionID, err := uuid.Parse(currentSessionIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid session ID format")
 		return
 	}
 

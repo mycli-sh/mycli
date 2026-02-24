@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"mycli.sh/api/internal/model"
@@ -17,46 +18,46 @@ import (
 
 // mockCommandStore implements CommandStore for testing.
 type mockCommandStore struct {
-	CreateCommandFn             func(ctx context.Context, ownerID, name, slug, description string, tags json.RawMessage) (*model.Command, error)
-	GetCommandByIDFn            func(ctx context.Context, id string) (*model.Command, error)
-	GetCommandByOwnerAndSlugFn  func(ctx context.Context, ownerID, slug string) (*model.Command, error)
-	ListCommandsByOwnerFn       func(ctx context.Context, ownerID, cursor string, limit int, query string) ([]model.Command, string, error)
-	SoftDeleteCommandFn         func(ctx context.Context, id string) error
-	GetLatestVersionByCommandFn func(ctx context.Context, commandID string) (*model.CommandVersion, error)
-	GetLatestHashByCommandFn    func(ctx context.Context, commandID string) (string, error)
-	CreateVersionFn             func(ctx context.Context, commandID string, version int, specJSON json.RawMessage, specHash, message, createdBy string) (*model.CommandVersion, error)
-	GetVersionByCommandAndVerFn func(ctx context.Context, commandID string, version int) (*model.CommandVersion, error)
-	IsLibraryInstalledFn        func(ctx context.Context, userID, libraryID string) bool
+	CreateCommandFn             func(ctx context.Context, ownerID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error)
+	GetCommandByIDFn            func(ctx context.Context, id uuid.UUID) (*model.Command, error)
+	GetCommandByOwnerAndSlugFn  func(ctx context.Context, ownerID uuid.UUID, slug string) (*model.Command, error)
+	ListCommandsByOwnerFn       func(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error)
+	SoftDeleteCommandFn         func(ctx context.Context, id uuid.UUID) error
+	GetLatestVersionByCommandFn func(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error)
+	GetLatestHashByCommandFn    func(ctx context.Context, commandID uuid.UUID) (string, error)
+	CreateVersionFn             func(ctx context.Context, commandID uuid.UUID, version int, specJSON json.RawMessage, specHash, message string, createdBy uuid.UUID) (*model.CommandVersion, error)
+	GetVersionByCommandAndVerFn func(ctx context.Context, commandID uuid.UUID, version int) (*model.CommandVersion, error)
+	IsLibraryInstalledFn        func(ctx context.Context, userID, libraryID uuid.UUID) bool
 }
 
-func (m *mockCommandStore) CreateCommand(ctx context.Context, ownerID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
+func (m *mockCommandStore) CreateCommand(ctx context.Context, ownerID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
 	return m.CreateCommandFn(ctx, ownerID, name, slug, description, tags)
 }
-func (m *mockCommandStore) GetCommandByID(ctx context.Context, id string) (*model.Command, error) {
+func (m *mockCommandStore) GetCommandByID(ctx context.Context, id uuid.UUID) (*model.Command, error) {
 	return m.GetCommandByIDFn(ctx, id)
 }
-func (m *mockCommandStore) GetCommandByOwnerAndSlug(ctx context.Context, ownerID, slug string) (*model.Command, error) {
+func (m *mockCommandStore) GetCommandByOwnerAndSlug(ctx context.Context, ownerID uuid.UUID, slug string) (*model.Command, error) {
 	return m.GetCommandByOwnerAndSlugFn(ctx, ownerID, slug)
 }
-func (m *mockCommandStore) ListCommandsByOwner(ctx context.Context, ownerID, cursor string, limit int, query string) ([]model.Command, string, error) {
+func (m *mockCommandStore) ListCommandsByOwner(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error) {
 	return m.ListCommandsByOwnerFn(ctx, ownerID, cursor, limit, query)
 }
-func (m *mockCommandStore) SoftDeleteCommand(ctx context.Context, id string) error {
+func (m *mockCommandStore) SoftDeleteCommand(ctx context.Context, id uuid.UUID) error {
 	return m.SoftDeleteCommandFn(ctx, id)
 }
-func (m *mockCommandStore) GetLatestVersionByCommand(ctx context.Context, commandID string) (*model.CommandVersion, error) {
+func (m *mockCommandStore) GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error) {
 	return m.GetLatestVersionByCommandFn(ctx, commandID)
 }
-func (m *mockCommandStore) GetLatestHashByCommand(ctx context.Context, commandID string) (string, error) {
+func (m *mockCommandStore) GetLatestHashByCommand(ctx context.Context, commandID uuid.UUID) (string, error) {
 	return m.GetLatestHashByCommandFn(ctx, commandID)
 }
-func (m *mockCommandStore) CreateVersion(ctx context.Context, commandID string, version int, specJSON json.RawMessage, specHash, message, createdBy string) (*model.CommandVersion, error) {
+func (m *mockCommandStore) CreateVersion(ctx context.Context, commandID uuid.UUID, version int, specJSON json.RawMessage, specHash, message string, createdBy uuid.UUID) (*model.CommandVersion, error) {
 	return m.CreateVersionFn(ctx, commandID, version, specJSON, specHash, message, createdBy)
 }
-func (m *mockCommandStore) GetVersionByCommandAndVersion(ctx context.Context, commandID string, version int) (*model.CommandVersion, error) {
+func (m *mockCommandStore) GetVersionByCommandAndVersion(ctx context.Context, commandID uuid.UUID, version int) (*model.CommandVersion, error) {
 	return m.GetVersionByCommandAndVerFn(ctx, commandID, version)
 }
-func (m *mockCommandStore) IsLibraryInstalled(ctx context.Context, userID, libraryID string) bool {
+func (m *mockCommandStore) IsLibraryInstalled(ctx context.Context, userID, libraryID uuid.UUID) bool {
 	if m.IsLibraryInstalledFn != nil {
 		return m.IsLibraryInstalledFn(ctx, userID, libraryID)
 	}
@@ -75,9 +76,9 @@ func TestCommandHandler_Create(t *testing.T) {
 			name: "success",
 			body: map[string]any{"name": "Deploy", "slug": "deploy", "description": "Deploy app"},
 			setupStore: func(ms *mockCommandStore) {
-				ms.CreateCommandFn = func(_ context.Context, ownerID, name, slug, desc string, tags json.RawMessage) (*model.Command, error) {
+				ms.CreateCommandFn = func(_ context.Context, ownerID uuid.UUID, name, slug, desc string, tags json.RawMessage) (*model.Command, error) {
 					return &model.Command{
-						ID:          "cmd_123",
+						ID:          testCmd123,
 						OwnerUserID: ownerID,
 						Name:        name,
 						Slug:        slug,
@@ -115,7 +116,7 @@ func TestCommandHandler_Create(t *testing.T) {
 			name: "duplicate slug",
 			body: map[string]any{"name": "Deploy", "slug": "deploy"},
 			setupStore: func(ms *mockCommandStore) {
-				ms.CreateCommandFn = func(context.Context, string, string, string, string, json.RawMessage) (*model.Command, error) {
+				ms.CreateCommandFn = func(context.Context, uuid.UUID, string, string, string, json.RawMessage) (*model.Command, error) {
 					return nil, &pgconn.PgError{Code: "23505"}
 				}
 			},
@@ -133,7 +134,7 @@ func TestCommandHandler_Create(t *testing.T) {
 			r := chi.NewRouter()
 			r.Post("/commands", h.Create)
 
-			req := requestWithUser("POST", "/commands", tt.body, "usr_owner")
+			req := requestWithUser("POST", "/commands", tt.body, testUser2)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -163,10 +164,10 @@ func TestCommandHandler_List(t *testing.T) {
 			name:  "list all",
 			query: "",
 			setupStore: func(ms *mockCommandStore) {
-				ms.ListCommandsByOwnerFn = func(context.Context, string, string, int, string) ([]model.Command, string, error) {
+				ms.ListCommandsByOwnerFn = func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 					return []model.Command{
-						{ID: "cmd_1", Slug: "deploy"},
-						{ID: "cmd_2", Slug: "build"},
+						{ID: testCmd1, Slug: "deploy"},
+						{ID: testCmd2, Slug: "build"},
 					}, "", nil
 				}
 			},
@@ -177,8 +178,8 @@ func TestCommandHandler_List(t *testing.T) {
 			name:  "slug lookup found",
 			query: "?slug=deploy",
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByOwnerAndSlugFn = func(context.Context, string, string) (*model.Command, error) {
-					return &model.Command{ID: "cmd_1", Slug: "deploy"}, nil
+				ms.GetCommandByOwnerAndSlugFn = func(context.Context, uuid.UUID, string) (*model.Command, error) {
+					return &model.Command{ID: testCmd1, Slug: "deploy"}, nil
 				}
 			},
 			wantCode:  http.StatusOK,
@@ -188,7 +189,7 @@ func TestCommandHandler_List(t *testing.T) {
 			name:  "slug lookup not found",
 			query: "?slug=nonexistent",
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByOwnerAndSlugFn = func(context.Context, string, string) (*model.Command, error) {
+				ms.GetCommandByOwnerAndSlugFn = func(context.Context, uuid.UUID, string) (*model.Command, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -206,7 +207,7 @@ func TestCommandHandler_List(t *testing.T) {
 			r := chi.NewRouter()
 			r.Get("/commands", h.List)
 
-			req := requestWithUser("GET", "/commands"+tt.query, nil, "usr_owner")
+			req := requestWithUser("GET", "/commands"+tt.query, nil, testUser2)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -234,12 +235,12 @@ func TestCommandHandler_Get(t *testing.T) {
 	}{
 		{
 			name:  "success",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner", Slug: "deploy", Name: "Deploy"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2, Slug: "deploy", Name: "Deploy"}, nil
 				}
-				ms.GetLatestVersionByCommandFn = func(context.Context, string) (*model.CommandVersion, error) {
+				ms.GetLatestVersionByCommandFn = func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
 					return &model.CommandVersion{Version: 3}, nil
 				}
 			},
@@ -247,9 +248,9 @@ func TestCommandHandler_Get(t *testing.T) {
 		},
 		{
 			name:  "not found",
-			cmdID: "cmd_999",
+			cmdID: testCmd1.String(),
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(context.Context, string) (*model.Command, error) {
+				ms.GetCommandByIDFn = func(context.Context, uuid.UUID) (*model.Command, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -258,10 +259,10 @@ func TestCommandHandler_Get(t *testing.T) {
 		},
 		{
 			name:  "not owner",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_other"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUserOther}, nil
 				}
 			},
 			wantCode:    http.StatusNotFound,
@@ -278,7 +279,7 @@ func TestCommandHandler_Get(t *testing.T) {
 			r := chi.NewRouter()
 			r.Get("/commands/{id}", h.Get)
 
-			req := requestWithUser("GET", "/commands/"+tt.cmdID, nil, "usr_owner")
+			req := requestWithUser("GET", "/commands/"+tt.cmdID, nil, testUser2)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -306,12 +307,12 @@ func TestCommandHandler_Delete(t *testing.T) {
 	}{
 		{
 			name:  "success",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2}, nil
 				}
-				ms.SoftDeleteCommandFn = func(context.Context, string) error {
+				ms.SoftDeleteCommandFn = func(context.Context, uuid.UUID) error {
 					return nil
 				}
 			},
@@ -319,9 +320,9 @@ func TestCommandHandler_Delete(t *testing.T) {
 		},
 		{
 			name:  "not found",
-			cmdID: "cmd_999",
+			cmdID: testCmd1.String(),
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(context.Context, string) (*model.Command, error) {
+				ms.GetCommandByIDFn = func(context.Context, uuid.UUID) (*model.Command, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -330,10 +331,10 @@ func TestCommandHandler_Delete(t *testing.T) {
 		},
 		{
 			name:  "not owner",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_other"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUserOther}, nil
 				}
 			},
 			wantCode:    http.StatusNotFound,
@@ -350,7 +351,7 @@ func TestCommandHandler_Delete(t *testing.T) {
 			r := chi.NewRouter()
 			r.Delete("/commands/{id}", h.Delete)
 
-			req := requestWithUser("DELETE", "/commands/"+tt.cmdID, nil, "usr_owner")
+			req := requestWithUser("DELETE", "/commands/"+tt.cmdID, nil, testUser2)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -379,30 +380,30 @@ func TestCommandHandler_PublishVersion(t *testing.T) {
 	}{
 		{
 			name:  "success",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			body:  map[string]any{"spec_json": validSpec, "message": "initial"},
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2}, nil
 				}
-				ms.GetLatestHashByCommandFn = func(context.Context, string) (string, error) {
+				ms.GetLatestHashByCommandFn = func(context.Context, uuid.UUID) (string, error) {
 					return "", store.ErrNotFound
 				}
-				ms.GetLatestVersionByCommandFn = func(context.Context, string) (*model.CommandVersion, error) {
+				ms.GetLatestVersionByCommandFn = func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
 					return nil, store.ErrNotFound
 				}
-				ms.CreateVersionFn = func(_ context.Context, cmdID string, ver int, _ json.RawMessage, hash, msg, by string) (*model.CommandVersion, error) {
-					return &model.CommandVersion{ID: "cv_1", CommandID: cmdID, Version: ver, SpecHash: hash}, nil
+				ms.CreateVersionFn = func(_ context.Context, cmdID uuid.UUID, ver int, _ json.RawMessage, hash, msg string, by uuid.UUID) (*model.CommandVersion, error) {
+					return &model.CommandVersion{ID: testCV1, CommandID: cmdID, Version: ver, SpecHash: hash}, nil
 				}
 			},
 			wantCode: http.StatusCreated,
 		},
 		{
 			name:  "not found",
-			cmdID: "cmd_999",
+			cmdID: testCmd1.String(),
 			body:  map[string]any{"spec_json": validSpec},
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(context.Context, string) (*model.Command, error) {
+				ms.GetCommandByIDFn = func(context.Context, uuid.UUID) (*model.Command, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -411,11 +412,11 @@ func TestCommandHandler_PublishVersion(t *testing.T) {
 		},
 		{
 			name:  "not owner",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			body:  map[string]any{"spec_json": validSpec},
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_other"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUserOther}, nil
 				}
 			},
 			wantCode:    http.StatusNotFound,
@@ -423,11 +424,11 @@ func TestCommandHandler_PublishVersion(t *testing.T) {
 		},
 		{
 			name:  "invalid spec",
-			cmdID: "cmd_123",
+			cmdID: testCmd123.String(),
 			body:  map[string]any{"spec_json": json.RawMessage(`{"invalid": true}`)},
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2}, nil
 				}
 			},
 			wantCode:    http.StatusBadRequest,
@@ -444,7 +445,7 @@ func TestCommandHandler_PublishVersion(t *testing.T) {
 			r := chi.NewRouter()
 			r.Post("/commands/{id}/versions", h.PublishVersion)
 
-			req := requestWithUser("POST", "/commands/"+tt.cmdID+"/versions", tt.body, "usr_owner")
+			req := requestWithUser("POST", "/commands/"+tt.cmdID+"/versions", tt.body, testUser2)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -473,24 +474,24 @@ func TestCommandHandler_GetVersion(t *testing.T) {
 	}{
 		{
 			name:    "success",
-			cmdID:   "cmd_123",
+			cmdID:   testCmd123.String(),
 			version: "1",
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2}, nil
 				}
-				ms.GetVersionByCommandAndVerFn = func(_ context.Context, cmdID string, ver int) (*model.CommandVersion, error) {
-					return &model.CommandVersion{ID: "cv_1", CommandID: cmdID, Version: ver, SpecHash: "abc123"}, nil
+				ms.GetVersionByCommandAndVerFn = func(_ context.Context, cmdID uuid.UUID, ver int) (*model.CommandVersion, error) {
+					return &model.CommandVersion{ID: testCV1, CommandID: cmdID, Version: ver, SpecHash: "abc123"}, nil
 				}
 			},
 			wantCode: http.StatusOK,
 		},
 		{
 			name:    "command not found",
-			cmdID:   "cmd_999",
+			cmdID:   testCmd1.String(),
 			version: "1",
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(context.Context, string) (*model.Command, error) {
+				ms.GetCommandByIDFn = func(context.Context, uuid.UUID) (*model.Command, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -499,13 +500,13 @@ func TestCommandHandler_GetVersion(t *testing.T) {
 		},
 		{
 			name:    "version not found",
-			cmdID:   "cmd_123",
+			cmdID:   testCmd123.String(),
 			version: "99",
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2}, nil
 				}
-				ms.GetVersionByCommandAndVerFn = func(context.Context, string, int) (*model.CommandVersion, error) {
+				ms.GetVersionByCommandAndVerFn = func(context.Context, uuid.UUID, int) (*model.CommandVersion, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -514,11 +515,11 @@ func TestCommandHandler_GetVersion(t *testing.T) {
 		},
 		{
 			name:    "invalid version number",
-			cmdID:   "cmd_123",
+			cmdID:   testCmd123.String(),
 			version: "abc",
 			setupStore: func(ms *mockCommandStore) {
-				ms.GetCommandByIDFn = func(_ context.Context, id string) (*model.Command, error) {
-					return &model.Command{ID: id, OwnerUserID: "usr_owner"}, nil
+				ms.GetCommandByIDFn = func(_ context.Context, id uuid.UUID) (*model.Command, error) {
+					return &model.Command{ID: id, OwnerUserID: testUser2}, nil
 				}
 			},
 			wantCode:    http.StatusBadRequest,
@@ -535,7 +536,7 @@ func TestCommandHandler_GetVersion(t *testing.T) {
 			r := chi.NewRouter()
 			r.Get("/commands/{id}/versions/{version}", h.GetVersion)
 
-			req := requestWithUser("GET", "/commands/"+tt.cmdID+"/versions/"+tt.version, nil, "usr_owner")
+			req := requestWithUser("GET", "/commands/"+tt.cmdID+"/versions/"+tt.version, nil, testUser2)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 

@@ -7,40 +7,41 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/model"
 	"mycli.sh/api/internal/store"
 )
 
 type mockMeStore struct {
-	GetUserByIDFn           func(ctx context.Context, id string) (*model.User, error)
+	GetUserByIDFn           func(ctx context.Context, id uuid.UUID) (*model.User, error)
 	IsUsernameTakenFn       func(ctx context.Context, username string) (bool, error)
-	SetUsernameFn           func(ctx context.Context, userID, username string) error
-	CountCommandsByOwnerFn  func(ctx context.Context, ownerID string) (int, error)
-	GetInstalledLibrariesFn func(ctx context.Context, userID string) ([]model.Library, error)
-	ListCommandsByLibraryFn func(ctx context.Context, libraryID string) ([]store.LibraryCommand, error)
-	GetOwnerNameFn          func(ctx context.Context, ownerID string) (string, error)
+	SetUsernameFn           func(ctx context.Context, userID uuid.UUID, username string) error
+	CountCommandsByOwnerFn  func(ctx context.Context, ownerID uuid.UUID) (int, error)
+	GetInstalledLibrariesFn func(ctx context.Context, userID uuid.UUID) ([]model.Library, error)
+	ListCommandsByLibraryFn func(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error)
+	GetOwnerNameFn          func(ctx context.Context, ownerID uuid.UUID) (string, error)
 }
 
-func (m *mockMeStore) GetUserByID(ctx context.Context, id string) (*model.User, error) {
+func (m *mockMeStore) GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	return m.GetUserByIDFn(ctx, id)
 }
 func (m *mockMeStore) IsUsernameTaken(ctx context.Context, username string) (bool, error) {
 	return m.IsUsernameTakenFn(ctx, username)
 }
-func (m *mockMeStore) SetUsername(ctx context.Context, userID, username string) error {
+func (m *mockMeStore) SetUsername(ctx context.Context, userID uuid.UUID, username string) error {
 	return m.SetUsernameFn(ctx, userID, username)
 }
-func (m *mockMeStore) CountCommandsByOwner(ctx context.Context, ownerID string) (int, error) {
+func (m *mockMeStore) CountCommandsByOwner(ctx context.Context, ownerID uuid.UUID) (int, error) {
 	return m.CountCommandsByOwnerFn(ctx, ownerID)
 }
-func (m *mockMeStore) GetInstalledLibraries(ctx context.Context, userID string) ([]model.Library, error) {
+func (m *mockMeStore) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error) {
 	return m.GetInstalledLibrariesFn(ctx, userID)
 }
-func (m *mockMeStore) ListCommandsByLibrary(ctx context.Context, libraryID string) ([]store.LibraryCommand, error) {
+func (m *mockMeStore) ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error) {
 	return m.ListCommandsByLibraryFn(ctx, libraryID)
 }
-func (m *mockMeStore) GetOwnerName(ctx context.Context, ownerID string) (string, error) {
+func (m *mockMeStore) GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error) {
 	return m.GetOwnerNameFn(ctx, ownerID)
 }
 
@@ -55,7 +56,7 @@ func TestMeHandler_GetMe(t *testing.T) {
 		{
 			name: "success with username",
 			setupStore: func(ms *mockMeStore) {
-				ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
+				ms.GetUserByIDFn = func(_ context.Context, id uuid.UUID) (*model.User, error) {
 					return &model.User{ID: id, Email: "alice@example.com", Username: &username}, nil
 				}
 			},
@@ -65,7 +66,7 @@ func TestMeHandler_GetMe(t *testing.T) {
 		{
 			name: "success without username",
 			setupStore: func(ms *mockMeStore) {
-				ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
+				ms.GetUserByIDFn = func(_ context.Context, id uuid.UUID) (*model.User, error) {
 					return &model.User{ID: id, Email: "alice@example.com"}, nil
 				}
 			},
@@ -75,7 +76,7 @@ func TestMeHandler_GetMe(t *testing.T) {
 		{
 			name: "not found",
 			setupStore: func(ms *mockMeStore) {
-				ms.GetUserByIDFn = func(context.Context, string) (*model.User, error) {
+				ms.GetUserByIDFn = func(context.Context, uuid.UUID) (*model.User, error) {
 					return nil, store.ErrNotFound
 				}
 			},
@@ -92,7 +93,7 @@ func TestMeHandler_GetMe(t *testing.T) {
 			r := chi.NewRouter()
 			r.Get("/me", h.GetMe)
 
-			req := requestWithUser("GET", "/me", nil, "usr_alice")
+			req := requestWithUser("GET", "/me", nil, testUser1)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -123,7 +124,7 @@ func TestMeHandler_SetUsername(t *testing.T) {
 			body: map[string]string{"username": "alice"},
 			setupStore: func(ms *mockMeStore) {
 				ms.IsUsernameTakenFn = func(context.Context, string) (bool, error) { return false, nil }
-				ms.SetUsernameFn = func(context.Context, string, string) error { return nil }
+				ms.SetUsernameFn = func(context.Context, uuid.UUID, string) error { return nil }
 			},
 			wantCode: http.StatusOK,
 		},
@@ -162,7 +163,7 @@ func TestMeHandler_SetUsername(t *testing.T) {
 			body: map[string]string{"username": "alice"},
 			setupStore: func(ms *mockMeStore) {
 				ms.IsUsernameTakenFn = func(context.Context, string) (bool, error) { return false, nil }
-				ms.SetUsernameFn = func(context.Context, string, string) error { return store.ErrNotFound }
+				ms.SetUsernameFn = func(context.Context, uuid.UUID, string) error { return store.ErrNotFound }
 			},
 			wantCode:    http.StatusConflict,
 			wantErrCode: "USERNAME_ALREADY_SET",
@@ -178,7 +179,7 @@ func TestMeHandler_SetUsername(t *testing.T) {
 			r := chi.NewRouter()
 			r.Put("/me/username", h.SetUsername)
 
-			req := requestWithUser("PUT", "/me/username", tt.body, "usr_alice")
+			req := requestWithUser("PUT", "/me/username", tt.body, testUser1)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -242,7 +243,7 @@ func TestMeHandler_CheckUsernameAvailable(t *testing.T) {
 			r := chi.NewRouter()
 			r.Get("/me/username/{username}", h.CheckUsernameAvailable)
 
-			req := requestWithUser("GET", "/me/username/"+tt.username, nil, "usr_alice")
+			req := requestWithUser("GET", "/me/username/"+tt.username, nil, testUser1)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -262,27 +263,26 @@ func TestMeHandler_CheckUsernameAvailable(t *testing.T) {
 
 func TestMeHandler_SyncSummary(t *testing.T) {
 	ms := &mockMeStore{}
-	ms.CountCommandsByOwnerFn = func(context.Context, string) (int, error) { return 5, nil }
-	ms.GetInstalledLibrariesFn = func(context.Context, string) ([]model.Library, error) {
-		ownerID := "usr_lib_owner"
+	ms.CountCommandsByOwnerFn = func(context.Context, uuid.UUID) (int, error) { return 5, nil }
+	ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
 		return []model.Library{
-			{ID: "lib_1", Slug: "kubernetes", Name: "Kubernetes", OwnerID: &ownerID},
+			{ID: testLib1, Slug: "kubernetes", Name: "Kubernetes", OwnerID: &testLibOwner},
 		}, nil
 	}
-	ms.ListCommandsByLibraryFn = func(context.Context, string) ([]store.LibraryCommand, error) {
+	ms.ListCommandsByLibraryFn = func(context.Context, uuid.UUID) ([]store.LibraryCommand, error) {
 		return []store.LibraryCommand{
-			{CommandID: "cmd_1", Slug: "deploy"},
-			{CommandID: "cmd_2", Slug: "rollback"},
+			{CommandID: testCmd1, Slug: "deploy"},
+			{CommandID: testCmd2, Slug: "rollback"},
 		}, nil
 	}
-	ms.GetOwnerNameFn = func(context.Context, string) (string, error) { return "kube-author", nil }
+	ms.GetOwnerNameFn = func(context.Context, uuid.UUID) (string, error) { return "kube-author", nil }
 
 	h := NewMeHandler(ms)
 
 	r := chi.NewRouter()
 	r.Get("/me/sync-summary", h.SyncSummary)
 
-	req := requestWithUser("GET", "/me/sync-summary", nil, "usr_alice")
+	req := requestWithUser("GET", "/me/sync-summary", nil, testUser1)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

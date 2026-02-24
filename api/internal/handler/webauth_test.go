@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"mycli.sh/api/internal/authservice"
 	"mycli.sh/api/internal/config"
@@ -38,7 +39,7 @@ func TestWebAuth_Login(t *testing.T) {
 			body: map[string]string{"email": "user@example.com"},
 			setupStore: func(ms *mockAuthStore) {
 				ms.CreateMagicLinkFn = func(context.Context, string, string, string, *string, time.Time) (*model.MagicLink, error) {
-					return &model.MagicLink{ID: "ml_1"}, nil
+					return &model.MagicLink{ID: testML1}, nil
 				}
 			},
 			wantCode: http.StatusOK,
@@ -68,7 +69,7 @@ func TestWebAuth_Login(t *testing.T) {
 			r := chi.NewRouter()
 			r.Post("/auth/web/login", h.WebLogin)
 
-			req := requestWithUser("POST", "/auth/web/login", tt.body, "")
+			req := requestWithUser("POST", "/auth/web/login", tt.body, uuid.Nil)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -105,18 +106,18 @@ func TestWebAuth_Verify(t *testing.T) {
 			setupStore: func(ms *mockAuthStore) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
-						return &model.MagicLink{ID: "ml_1", Email: "user@example.com", ExpiresAt: now.Add(15 * time.Minute)}, nil
+						return &model.MagicLink{ID: testML1, Email: "user@example.com", ExpiresAt: now.Add(15 * time.Minute)}, nil
 					}
 					return nil, store.ErrNotFound
 				}
-				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return nil }
+				ms.MarkMagicLinkUsedFn = func(context.Context, uuid.UUID) error { return nil }
 				ms.GetUserByEmailFn = func(_ context.Context, email string) (*model.User, error) {
-					return &model.User{ID: "usr_1", Email: email}, nil
+					return &model.User{ID: testUser1, Email: email}, nil
 				}
-				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
-					return &model.Session{ID: "ses_1", UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
+				ms.CreateSessionFn = func(_ context.Context, userID uuid.UUID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
+					return &model.Session{ID: testSes1, UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				}
-				ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
+				ms.GetUserByIDFn = func(_ context.Context, id uuid.UUID) (*model.User, error) {
 					return &model.User{ID: id, Email: "user@example.com"}, nil
 				}
 			},
@@ -129,21 +130,21 @@ func TestWebAuth_Verify(t *testing.T) {
 			setupStore: func(ms *mockAuthStore) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
-						return &model.MagicLink{ID: "ml_1", Email: "new@example.com", ExpiresAt: now.Add(15 * time.Minute)}, nil
+						return &model.MagicLink{ID: testML1, Email: "new@example.com", ExpiresAt: now.Add(15 * time.Minute)}, nil
 					}
 					return nil, store.ErrNotFound
 				}
-				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return nil }
+				ms.MarkMagicLinkUsedFn = func(context.Context, uuid.UUID) error { return nil }
 				ms.GetUserByEmailFn = func(context.Context, string) (*model.User, error) {
 					return nil, store.ErrNotFound
 				}
 				ms.CreateUserFn = func(_ context.Context, email string) (*model.User, error) {
-					return &model.User{ID: "usr_new", Email: email}, nil
+					return &model.User{ID: testUserNew, Email: email}, nil
 				}
-				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
-					return &model.Session{ID: "ses_1", UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
+				ms.CreateSessionFn = func(_ context.Context, userID uuid.UUID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
+					return &model.Session{ID: testSes1, UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				}
-				ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
+				ms.GetUserByIDFn = func(_ context.Context, id uuid.UUID) (*model.User, error) {
 					return &model.User{ID: id, Email: "new@example.com"}, nil
 				}
 			},
@@ -175,7 +176,7 @@ func TestWebAuth_Verify(t *testing.T) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
 						return &model.MagicLink{
-							ID: "ml_1", Email: "user@example.com",
+							ID: testML1, Email: "user@example.com",
 							ExpiresAt: now.Add(-1 * time.Minute), // expired
 						}, nil
 					}
@@ -193,7 +194,7 @@ func TestWebAuth_Verify(t *testing.T) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
 						return &model.MagicLink{
-							ID: "ml_1", Email: "user@example.com",
+							ID: testML1, Email: "user@example.com",
 							ExpiresAt: now.Add(15 * time.Minute),
 							UsedAt:    &usedAt,
 						}, nil
@@ -215,7 +216,7 @@ func TestWebAuth_Verify(t *testing.T) {
 			r := chi.NewRouter()
 			r.Post("/auth/web/verify", h.WebVerify)
 
-			req := requestWithUser("POST", "/auth/web/verify", tt.body, "")
+			req := requestWithUser("POST", "/auth/web/verify", tt.body, uuid.Nil)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 

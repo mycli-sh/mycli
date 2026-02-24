@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"mycli.sh/api/internal/model"
 )
 
 // ListCommandsByOwner performs a dynamic query with optional cursor pagination
 // and ILIKE search. This cannot be expressed as a static sqlc query.
-func (s *Store) ListCommandsByOwner(ctx context.Context, ownerID string, cursor string, limit int, query string) ([]model.Command, string, error) {
+func (s *Store) ListCommandsByOwner(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -19,8 +21,12 @@ func (s *Store) ListCommandsByOwner(ctx context.Context, ownerID string, cursor 
 
 	argIdx := 3
 	if cursor != "" {
+		cursorUUID, err := uuid.Parse(cursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid cursor: %w", err)
+		}
 		whereClause += fmt.Sprintf(" AND id > $%d", argIdx)
-		args = append(args, cursor)
+		args = append(args, cursorUUID)
 		argIdx++
 	}
 	if query != "" {
@@ -60,7 +66,7 @@ func (s *Store) ListCommandsByOwner(ctx context.Context, ownerID string, cursor 
 	var nextCursor string
 	if len(commands) > limit {
 		commands = commands[:limit]
-		nextCursor = commands[limit-1].ID
+		nextCursor = commands[limit-1].ID.String()
 	}
 
 	return commands, nextCursor, nil

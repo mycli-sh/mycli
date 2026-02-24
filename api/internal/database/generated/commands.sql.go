@@ -8,13 +8,15 @@ package dbgen
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/google/uuid"
 )
 
 const countCommandsByOwner = `-- name: CountCommandsByOwner :one
 SELECT count(*) FROM commands WHERE owner_user_id = $1 AND deleted_at IS NULL AND library_id IS NULL
 `
 
-func (q *Queries) CountCommandsByOwner(ctx context.Context, ownerUserID string) (int64, error) {
+func (q *Queries) CountCommandsByOwner(ctx context.Context, ownerUserID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countCommandsByOwner, ownerUserID)
 	var count int64
 	err := row.Scan(&count)
@@ -28,7 +30,7 @@ RETURNING id, owner_user_id, name, slug, description, tags, library_id, created_
 `
 
 type CreateCommandParams struct {
-	OwnerUserID string          `json:"owner_user_id"`
+	OwnerUserID uuid.UUID       `json:"owner_user_id"`
 	Name        string          `json:"name"`
 	Slug        string          `json:"slug"`
 	Description string          `json:"description"`
@@ -66,8 +68,8 @@ RETURNING id, owner_user_id, name, slug, description, tags, library_id, created_
 `
 
 type CreateCommandForLibraryParams struct {
-	OwnerUserID string          `json:"owner_user_id"`
-	LibraryID   *string         `json:"library_id"`
+	OwnerUserID uuid.UUID       `json:"owner_user_id"`
+	LibraryID   *uuid.UUID      `json:"library_id"`
 	Name        string          `json:"name"`
 	Slug        string          `json:"slug"`
 	Description string          `json:"description"`
@@ -105,7 +107,7 @@ FROM commands
 WHERE id = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) GetCommandByID(ctx context.Context, id string) (Command, error) {
+func (q *Queries) GetCommandByID(ctx context.Context, id uuid.UUID) (Command, error) {
 	row := q.db.QueryRow(ctx, getCommandByID, id)
 	var i Command
 	err := row.Scan(
@@ -130,8 +132,8 @@ WHERE library_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetCommandByLibraryAndSlugParams struct {
-	LibraryID *string `json:"library_id"`
-	Slug      string  `json:"slug"`
+	LibraryID *uuid.UUID `json:"library_id"`
+	Slug      string     `json:"slug"`
 }
 
 func (q *Queries) GetCommandByLibraryAndSlug(ctx context.Context, arg GetCommandByLibraryAndSlugParams) (Command, error) {
@@ -159,8 +161,8 @@ WHERE owner_user_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetCommandByOwnerAndSlugParams struct {
-	OwnerUserID string `json:"owner_user_id"`
-	Slug        string `json:"slug"`
+	OwnerUserID uuid.UUID `json:"owner_user_id"`
+	Slug        string    `json:"slug"`
 }
 
 func (q *Queries) GetCommandByOwnerAndSlug(ctx context.Context, arg GetCommandByOwnerAndSlugParams) (Command, error) {
@@ -185,7 +187,7 @@ const softDeleteCommand = `-- name: SoftDeleteCommand :execrows
 UPDATE commands SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) SoftDeleteCommand(ctx context.Context, id string) (int64, error) {
+func (q *Queries) SoftDeleteCommand(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, softDeleteCommand, id)
 	if err != nil {
 		return 0, err
@@ -200,7 +202,7 @@ WHERE id = $1 AND deleted_at IS NULL
 `
 
 type UpdateCommandMetaParams struct {
-	ID          string          `json:"id"`
+	ID          uuid.UUID       `json:"id"`
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Tags        json.RawMessage `json:"tags"`

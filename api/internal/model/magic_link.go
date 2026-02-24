@@ -1,9 +1,13 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type MagicLink struct {
-	ID          string     `json:"id"`
+	ID          uuid.UUID  `json:"id"`
 	Email       string     `json:"email"`
 	TokenHash   string     `json:"token_hash"`
 	DeviceCode  string     `json:"device_code"`
@@ -12,6 +16,6 @@ type MagicLink struct {
 	UsedAt      *time.Time `json:"used_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	Authorized  bool       `json:"authorized"`
-	UserID      *string    `json:"user_id,omitempty"`
+	UserID      *uuid.UUID `json:"user_id,omitempty"`
 	OTPAttempts int        `json:"otp_attempts"`
 }

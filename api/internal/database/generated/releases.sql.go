@@ -7,6 +7,8 @@ package dbgen
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const createLibraryRelease = `-- name: CreateLibraryRelease :one
@@ -16,12 +18,12 @@ RETURNING id, library_id, version, tag, commit_hash, command_count, released_by,
 `
 
 type CreateLibraryReleaseParams struct {
-	LibraryID    string `json:"library_id"`
-	Version      string `json:"version"`
-	Tag          string `json:"tag"`
-	CommitHash   string `json:"commit_hash"`
-	CommandCount int32  `json:"command_count"`
-	ReleasedBy   string `json:"released_by"`
+	LibraryID    uuid.UUID `json:"library_id"`
+	Version      string    `json:"version"`
+	Tag          string    `json:"tag"`
+	CommitHash   string    `json:"commit_hash"`
+	CommandCount int32     `json:"command_count"`
+	ReleasedBy   uuid.UUID `json:"released_by"`
 }
 
 func (q *Queries) CreateLibraryRelease(ctx context.Context, arg CreateLibraryReleaseParams) (LibraryRelease, error) {
@@ -54,8 +56,8 @@ WHERE library_id = $1 AND version = $2
 `
 
 type GetLibraryReleaseParams struct {
-	LibraryID string `json:"library_id"`
-	Version   string `json:"version"`
+	LibraryID uuid.UUID `json:"library_id"`
+	Version   string    `json:"version"`
 }
 
 func (q *Queries) GetLibraryRelease(ctx context.Context, arg GetLibraryReleaseParams) (LibraryRelease, error) {
@@ -79,8 +81,8 @@ SELECT EXISTS(SELECT 1 FROM library_releases WHERE library_id = $1 AND version =
 `
 
 type LibraryReleaseExistsParams struct {
-	LibraryID string `json:"library_id"`
-	Version   string `json:"version"`
+	LibraryID uuid.UUID `json:"library_id"`
+	Version   string    `json:"version"`
 }
 
 func (q *Queries) LibraryReleaseExists(ctx context.Context, arg LibraryReleaseExistsParams) (bool, error) {
@@ -97,7 +99,7 @@ WHERE library_id = $1
 ORDER BY released_at DESC
 `
 
-func (q *Queries) ListLibraryReleases(ctx context.Context, libraryID string) ([]LibraryRelease, error) {
+func (q *Queries) ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]LibraryRelease, error) {
 	rows, err := q.db.Query(ctx, listLibraryReleases, libraryID)
 	if err != nil {
 		return nil, err

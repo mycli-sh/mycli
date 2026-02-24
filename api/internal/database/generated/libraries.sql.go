@@ -8,6 +8,7 @@ package dbgen
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -23,11 +24,11 @@ RETURNING id, owner_id, slug, name, description, git_url, is_public, install_cou
 `
 
 type CreateOrUpdateLibraryParams struct {
-	OwnerID     *string `json:"owner_id"`
-	Slug        string  `json:"slug"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	GitUrl      *string `json:"git_url"`
+	OwnerID     *uuid.UUID `json:"owner_id"`
+	Slug        string     `json:"slug"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	GitUrl      *string    `json:"git_url"`
 }
 
 func (q *Queries) CreateOrUpdateLibrary(ctx context.Context, arg CreateOrUpdateLibraryParams) (Library, error) {
@@ -59,7 +60,7 @@ const decrementInstallCount = `-- name: DecrementInstallCount :exec
 UPDATE libraries SET install_count = GREATEST(install_count - 1, 0) WHERE id = $1
 `
 
-func (q *Queries) DecrementInstallCount(ctx context.Context, id string) error {
+func (q *Queries) DecrementInstallCount(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, decrementInstallCount, id)
 	return err
 }
@@ -72,7 +73,7 @@ WHERE li.user_id = $1
 ORDER BY l.name ASC
 `
 
-func (q *Queries) GetInstalledLibraries(ctx context.Context, userID string) ([]Library, error) {
+func (q *Queries) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]Library, error) {
 	rows, err := q.db.Query(ctx, getInstalledLibraries, userID)
 	if err != nil {
 		return nil, err
@@ -110,8 +111,8 @@ FROM libraries WHERE owner_id = $1 AND slug = $2
 `
 
 type GetLibraryByOwnerSlugParams struct {
-	OwnerID *string `json:"owner_id"`
-	Slug    string  `json:"slug"`
+	OwnerID *uuid.UUID `json:"owner_id"`
+	Slug    string     `json:"slug"`
 }
 
 func (q *Queries) GetLibraryByOwnerSlug(ctx context.Context, arg GetLibraryByOwnerSlugParams) (Library, error) {
@@ -194,7 +195,7 @@ const getOwnerName = `-- name: GetOwnerName :one
 SELECT username FROM users WHERE id = $1
 `
 
-func (q *Queries) GetOwnerName(ctx context.Context, id string) (*string, error) {
+func (q *Queries) GetOwnerName(ctx context.Context, id uuid.UUID) (*string, error) {
 	row := q.db.QueryRow(ctx, getOwnerName, id)
 	var username *string
 	err := row.Scan(&username)
@@ -205,7 +206,7 @@ const incrementInstallCount = `-- name: IncrementInstallCount :exec
 UPDATE libraries SET install_count = install_count + 1 WHERE id = $1
 `
 
-func (q *Queries) IncrementInstallCount(ctx context.Context, id string) error {
+func (q *Queries) IncrementInstallCount(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, incrementInstallCount, id)
 	return err
 }
@@ -217,8 +218,8 @@ ON CONFLICT (user_id, library_id) DO NOTHING
 `
 
 type InstallLibraryParams struct {
-	UserID    string `json:"user_id"`
-	LibraryID string `json:"library_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	LibraryID uuid.UUID `json:"library_id"`
 }
 
 func (q *Queries) InstallLibrary(ctx context.Context, arg InstallLibraryParams) error {
@@ -231,8 +232,8 @@ SELECT EXISTS(SELECT 1 FROM library_installations WHERE user_id = $1 AND library
 `
 
 type IsLibraryInstalledParams struct {
-	UserID    string `json:"user_id"`
-	LibraryID string `json:"library_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	LibraryID uuid.UUID `json:"library_id"`
 }
 
 func (q *Queries) IsLibraryInstalled(ctx context.Context, arg IsLibraryInstalledParams) (bool, error) {
@@ -250,14 +251,14 @@ ORDER BY slug ASC
 `
 
 type ListCommandsByLibraryRow struct {
-	ID          string             `json:"id"`
+	ID          uuid.UUID          `json:"id"`
 	Slug        string             `json:"slug"`
 	Name        string             `json:"name"`
 	Description string             `json:"description"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-func (q *Queries) ListCommandsByLibrary(ctx context.Context, libraryID *string) ([]ListCommandsByLibraryRow, error) {
+func (q *Queries) ListCommandsByLibrary(ctx context.Context, libraryID *uuid.UUID) ([]ListCommandsByLibraryRow, error) {
 	rows, err := q.db.Query(ctx, listCommandsByLibrary, libraryID)
 	if err != nil {
 		return nil, err
@@ -325,8 +326,8 @@ DELETE FROM library_installations WHERE user_id = $1 AND library_id = $2
 `
 
 type UninstallLibraryParams struct {
-	UserID    string `json:"user_id"`
-	LibraryID string `json:"library_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	LibraryID uuid.UUID `json:"library_id"`
 }
 
 func (q *Queries) UninstallLibrary(ctx context.Context, arg UninstallLibraryParams) (int64, error) {
@@ -342,8 +343,8 @@ UPDATE libraries SET latest_version = $1, updated_at = now() WHERE id = $2
 `
 
 type UpdateLibraryLatestVersionParams struct {
-	LatestVersion *string `json:"latest_version"`
-	ID            string  `json:"id"`
+	LatestVersion *string   `json:"latest_version"`
+	ID            uuid.UUID `json:"id"`
 }
 
 func (q *Queries) UpdateLibraryLatestVersion(ctx context.Context, arg UpdateLibraryLatestVersionParams) error {

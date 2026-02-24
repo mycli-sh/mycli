@@ -8,6 +8,8 @@ package dbgen
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/google/uuid"
 )
 
 const createVersion = `-- name: CreateVersion :one
@@ -17,12 +19,12 @@ RETURNING id, command_id, version, spec_json, spec_hash, message, created_by, cr
 `
 
 type CreateVersionParams struct {
-	CommandID string          `json:"command_id"`
+	CommandID uuid.UUID       `json:"command_id"`
 	Version   int32           `json:"version"`
 	SpecJson  json.RawMessage `json:"spec_json"`
 	SpecHash  string          `json:"spec_hash"`
 	Message   string          `json:"message"`
-	CreatedBy string          `json:"created_by"`
+	CreatedBy uuid.UUID       `json:"created_by"`
 }
 
 func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) (CommandVersion, error) {
@@ -56,7 +58,7 @@ ORDER BY version DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestHashByCommand(ctx context.Context, commandID string) (string, error) {
+func (q *Queries) GetLatestHashByCommand(ctx context.Context, commandID uuid.UUID) (string, error) {
 	row := q.db.QueryRow(ctx, getLatestHashByCommand, commandID)
 	var spec_hash string
 	err := row.Scan(&spec_hash)
@@ -71,7 +73,7 @@ ORDER BY version DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestVersionByCommand(ctx context.Context, commandID string) (CommandVersion, error) {
+func (q *Queries) GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (CommandVersion, error) {
 	row := q.db.QueryRow(ctx, getLatestVersionByCommand, commandID)
 	var i CommandVersion
 	err := row.Scan(
@@ -94,8 +96,8 @@ WHERE command_id = $1 AND version = $2
 `
 
 type GetVersionByCommandAndVersionParams struct {
-	CommandID string `json:"command_id"`
-	Version   int32  `json:"version"`
+	CommandID uuid.UUID `json:"command_id"`
+	Version   int32     `json:"version"`
 }
 
 func (q *Queries) GetVersionByCommandAndVersion(ctx context.Context, arg GetVersionByCommandAndVersionParams) (CommandVersion, error) {
@@ -121,7 +123,7 @@ WHERE command_id = $1
 ORDER BY version DESC
 `
 
-func (q *Queries) ListVersionsByCommand(ctx context.Context, commandID string) ([]CommandVersion, error) {
+func (q *Queries) ListVersionsByCommand(ctx context.Context, commandID uuid.UUID) ([]CommandVersion, error) {
 	rows, err := q.db.Query(ctx, listVersionsByCommand, commandID)
 	if err != nil {
 		return nil, err

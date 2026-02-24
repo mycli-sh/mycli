@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"mycli.sh/api/internal/middleware"
 	"mycli.sh/api/internal/store"
 )
@@ -19,15 +21,15 @@ func NewCatalogHandler(s store.CatalogStore) *CatalogHandler {
 }
 
 type catalogItem struct {
-	CommandID    string `json:"command_id"`
-	Slug         string `json:"slug"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Version      int    `json:"version"`
-	SpecHash     string `json:"spec_hash"`
-	UpdatedAt    string `json:"updated_at"`
-	Library      string `json:"library,omitempty"`
-	LibraryOwner string `json:"library_owner,omitempty"`
+	CommandID    uuid.UUID `json:"command_id"`
+	Slug         string    `json:"slug"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Version      int       `json:"version"`
+	SpecHash     string    `json:"spec_hash"`
+	UpdatedAt    string    `json:"updated_at"`
+	Library      string    `json:"library,omitempty"`
+	LibraryOwner string    `json:"library_owner,omitempty"`
 }
 
 func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {

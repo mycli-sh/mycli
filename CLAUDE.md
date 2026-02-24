@@ -46,7 +46,7 @@ The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JW
 
 ## Conventions
 
-- Database IDs use prefixed UUIDs (`usr_`, `cmd_`, `cv_`, `ml_`, `lib_`, `ses_`, `lr_`)
+- Database IDs use native PostgreSQL UUIDs (UUIDv7 via `uuidv7()`, Go type `uuid.UUID` from `google/uuid`)
 - Soft deletes on commands (`deleted_at` column)
 - Auth tokens stored in OS keyring with file fallback (`~/.my/credentials.json`)
 - CLI local history stored as JSONL at `~/.my/history.jsonl`

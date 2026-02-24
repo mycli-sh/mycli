@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -19,7 +20,7 @@ RETURNING id, user_id, refresh_token_hash, user_agent, ip_address, device_id, de
 `
 
 type CreateSessionParams struct {
-	UserID           string             `json:"user_id"`
+	UserID           uuid.UUID          `json:"user_id"`
 	RefreshTokenHash string             `json:"refresh_token_hash"`
 	UserAgent        string             `json:"user_agent"`
 	IpAddress        string             `json:"ip_address"`
@@ -29,8 +30,8 @@ type CreateSessionParams struct {
 }
 
 type CreateSessionRow struct {
-	ID               string             `json:"id"`
-	UserID           string             `json:"user_id"`
+	ID               uuid.UUID          `json:"id"`
+	UserID           uuid.UUID          `json:"user_id"`
 	RefreshTokenHash string             `json:"refresh_token_hash"`
 	UserAgent        string             `json:"user_agent"`
 	IpAddress        string             `json:"ip_address"`
@@ -76,8 +77,8 @@ WHERE refresh_token_hash = $1 AND expires_at > NOW()
 `
 
 type GetSessionByTokenHashRow struct {
-	ID               string             `json:"id"`
-	UserID           string             `json:"user_id"`
+	ID               uuid.UUID          `json:"id"`
+	UserID           uuid.UUID          `json:"user_id"`
 	RefreshTokenHash string             `json:"refresh_token_hash"`
 	UserAgent        string             `json:"user_agent"`
 	IpAddress        string             `json:"ip_address"`
@@ -116,8 +117,8 @@ ORDER BY last_used_at DESC
 `
 
 type ListSessionsByUserRow struct {
-	ID               string             `json:"id"`
-	UserID           string             `json:"user_id"`
+	ID               uuid.UUID          `json:"id"`
+	UserID           uuid.UUID          `json:"user_id"`
 	RefreshTokenHash string             `json:"refresh_token_hash"`
 	UserAgent        string             `json:"user_agent"`
 	IpAddress        string             `json:"ip_address"`
@@ -129,7 +130,7 @@ type ListSessionsByUserRow struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) ListSessionsByUser(ctx context.Context, userID string) ([]ListSessionsByUserRow, error) {
+func (q *Queries) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ListSessionsByUserRow, error) {
 	rows, err := q.db.Query(ctx, listSessionsByUser, userID)
 	if err != nil {
 		return nil, err
@@ -167,8 +168,8 @@ WHERE user_id = $1 AND id != $2 AND revoked_at IS NULL
 `
 
 type RevokeAllSessionsExceptParams struct {
-	UserID string `json:"user_id"`
-	ID     string `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+	ID     uuid.UUID `json:"id"`
 }
 
 func (q *Queries) RevokeAllSessionsExcept(ctx context.Context, arg RevokeAllSessionsExceptParams) (int64, error) {
@@ -183,7 +184,7 @@ const revokeSession = `-- name: RevokeSession :execrows
 UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL
 `
 
-func (q *Queries) RevokeSession(ctx context.Context, id string) (int64, error) {
+func (q *Queries) RevokeSession(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeSession, id)
 	if err != nil {
 		return 0, err
@@ -197,8 +198,8 @@ WHERE user_id = $1 AND device_id = $2 AND device_id != '' AND revoked_at IS NULL
 `
 
 type RevokeSessionByDeviceIDParams struct {
-	UserID   string `json:"user_id"`
-	DeviceID string `json:"device_id"`
+	UserID   uuid.UUID `json:"user_id"`
+	DeviceID string    `json:"device_id"`
 }
 
 func (q *Queries) RevokeSessionByDeviceID(ctx context.Context, arg RevokeSessionByDeviceIDParams) error {
@@ -210,7 +211,7 @@ const updateSessionLastUsed = `-- name: UpdateSessionLastUsed :exec
 UPDATE sessions SET last_used_at = now() WHERE id = $1
 `
 
-func (q *Queries) UpdateSessionLastUsed(ctx context.Context, id string) error {
+func (q *Queries) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, updateSessionLastUsed, id)
 	return err
 }
@@ -220,8 +221,8 @@ UPDATE sessions SET refresh_token_hash = $2 WHERE id = $1
 `
 
 type UpdateSessionRefreshTokenHashParams struct {
-	ID               string `json:"id"`
-	RefreshTokenHash string `json:"refresh_token_hash"`
+	ID               uuid.UUID `json:"id"`
+	RefreshTokenHash string    `json:"refresh_token_hash"`
 }
 
 func (q *Queries) UpdateSessionRefreshTokenHash(ctx context.Context, arg UpdateSessionRefreshTokenHashParams) error {

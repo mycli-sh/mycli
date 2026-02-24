@@ -7,20 +7,21 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const UserIDKey contextKey = "user_id"
 
-func GetUserID(ctx context.Context) string {
-	v, _ := ctx.Value(UserIDKey).(string)
+func GetUserID(ctx context.Context) uuid.UUID {
+	v, _ := ctx.Value(UserIDKey).(uuid.UUID)
 	return v
 }
 
 // parseAccessToken validates a JWT string, checks that it uses HMAC signing,
-// is an "access" type token, and returns the subject (user ID).
-func parseAccessToken(jwtSecret, tokenStr string) (string, error) {
+// is an "access" type token, and returns the subject (user ID) as a uuid.UUID.
+func parseAccessToken(jwtSecret, tokenStr string) (uuid.UUID, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
@@ -28,24 +29,29 @@ func parseAccessToken(jwtSecret, tokenStr string) (string, error) {
 		return []byte(jwtSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return "", errors.New("invalid token")
+		return uuid.Nil, errors.New("invalid token")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", errors.New("invalid claims")
+		return uuid.Nil, errors.New("invalid claims")
 	}
 
 	if tokenType, _ := claims["type"].(string); tokenType != "access" {
-		return "", errors.New("invalid token type")
+		return uuid.Nil, errors.New("invalid token type")
 	}
 
 	sub, _ := claims["sub"].(string)
 	if sub == "" {
-		return "", errors.New("missing subject")
+		return uuid.Nil, errors.New("missing subject")
 	}
 
-	return sub, nil
+	userID, err := uuid.Parse(sub)
+	if err != nil {
+		return uuid.Nil, errors.New("invalid subject")
+	}
+
+	return userID, nil
 }
 
 // OptionalAuth parses the JWT if present but does not reject unauthenticated
