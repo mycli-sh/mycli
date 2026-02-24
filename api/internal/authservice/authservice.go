@@ -14,6 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"mycli.sh/api/internal/model"
+	"mycli.sh/api/internal/store"
 )
 
 // Store defines the subset of store operations needed by the auth service.
@@ -24,9 +25,6 @@ type Store interface {
 	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
 }
-
-// ErrNotFound is a sentinel to check against store.ErrNotFound without importing store.
-var ErrNotFound = errors.New("not found")
 
 // Service centralises auth business logic shared across handlers.
 type Service struct {
@@ -48,11 +46,11 @@ type TokenResult struct {
 }
 
 // FindOrCreateUser looks up a user by email. If the user does not exist, it
-// creates one. The sentinel errNotFound must match the store's ErrNotFound.
-func (s *Service) FindOrCreateUser(ctx context.Context, email string, errNotFound error) (*model.User, error) {
+// creates one.
+func (s *Service) FindOrCreateUser(ctx context.Context, email string) (*model.User, error) {
 	user, err := s.store.GetUserByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, store.ErrNotFound) {
 			return s.store.CreateUser(ctx, email)
 		}
 		return nil, err

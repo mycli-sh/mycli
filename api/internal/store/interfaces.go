@@ -60,6 +60,7 @@ type AuthStore interface {
 	IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int, error)
 	DeleteMagicLinksByDeviceCode(ctx context.Context, deviceCode string) error
 	DeleteExpiredMagicLinks(ctx context.Context) error
+	ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	CreateUser(ctx context.Context, email string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)

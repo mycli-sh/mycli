@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ type mockAuthStore struct {
 	IncrementMagicLinkOTPAttemptsFn  func(ctx context.Context, id string) (int, error)
 	DeleteMagicLinksByDeviceCodeFn   func(ctx context.Context, deviceCode string) error
 	DeleteExpiredMagicLinksFn        func(ctx context.Context) error
+	ConsumeAuthorizedDeviceCodeFn    func(ctx context.Context, deviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	GetUserByEmailFn                 func(ctx context.Context, email string) (*model.User, error)
 	CreateUserFn                     func(ctx context.Context, email string) (*model.User, error)
 	GetUserByIDFn                    func(ctx context.Context, id string) (*model.User, error)
@@ -80,6 +82,13 @@ func (m *mockAuthStore) DeleteExpiredMagicLinks(ctx context.Context) error {
 		return m.DeleteExpiredMagicLinksFn(ctx)
 	}
 	return nil
+}
+func (m *mockAuthStore) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
+	if m.ConsumeAuthorizedDeviceCodeFn != nil {
+		return m.ConsumeAuthorizedDeviceCodeFn(ctx, deviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, expiresAt)
+	}
+	now := time.Now()
+	return &model.Session{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 }
 func (m *mockAuthStore) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	return m.GetUserByEmailFn(ctx, email)
@@ -277,8 +286,8 @@ func TestAuthHandler_PollDeviceToken(t *testing.T) {
 			wantTokens: true,
 		},
 		{
-			name:       "delete device session fails",
-			deviceCode: "delete-fail",
+			name:       "consume device code fails",
+			deviceCode: "consume-fail",
 			setupStore: func(ms *mockAuthStore) {
 				userID := "usr_alice"
 				ms.GetMagicLinkByDeviceCodeFn = func(_ context.Context, dc string) (*model.MagicLink, error) {
@@ -288,8 +297,8 @@ func TestAuthHandler_PollDeviceToken(t *testing.T) {
 						UserID:     &userID,
 					}, nil
 				}
-				ms.DeleteMagicLinksByDeviceCodeFn = func(context.Context, string) error {
-					return errors.New("db error")
+				ms.ConsumeAuthorizedDeviceCodeFn = func(context.Context, string, string, string, string, string, string, string, time.Time) (*model.Session, error) {
+					return nil, errors.New("db error")
 				}
 			},
 			wantCode:    http.StatusInternalServerError,
@@ -299,11 +308,7 @@ func TestAuthHandler_PollDeviceToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			now := time.Now()
 			ms := &mockAuthStore{
-				CreateSessionFn: func(context.Context, string, string, string, string, string, string, time.Time) (*model.Session, error) {
-					return &model.Session{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
-				},
 				GetUserByIDFn: func(_ context.Context, id string) (*model.User, error) {
 					return &model.User{ID: id, Email: "alice@example.com"}, nil
 				},
@@ -776,10 +781,11 @@ func TestAuthHandler_DeviceFlow_EndToEnd(t *testing.T) {
 			authorizedUserID = &userID
 			return nil
 		},
-		DeleteMagicLinksByDeviceCodeFn: func(_ context.Context, dc string) error {
-			// After deletion, subsequent lookups should fail
+		ConsumeAuthorizedDeviceCodeFn: func(_ context.Context, dc, _, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
+			// After consumption, subsequent lookups should fail
 			capturedDeviceCode = ""
-			return nil
+			now := time.Now()
+			return &model.Session{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 		},
 	}
 
@@ -842,10 +848,6 @@ func TestAuthHandler_DeviceFlow_EndToEnd(t *testing.T) {
 	}
 
 	// Step 3: Poll for token — should now be authorized
-	now := time.Now()
-	ms.CreateSessionFn = func(context.Context, string, string, string, string, string, string, time.Time) (*model.Session, error) {
-		return &model.Session{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
-	}
 	ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
 		return &model.User{ID: id, Email: "user@example.com"}, nil
 	}
@@ -880,6 +882,238 @@ func TestAuthHandler_DeviceFlow_EndToEnd(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("second poll: got status %d, want 400", rec.Code)
+	}
+}
+
+func TestAuthHandler_VerifyMagicLink(t *testing.T) {
+	magicToken := authservice.GenerateCode(32)
+	tokenHash := authservice.HashToken(magicToken)
+	now := time.Now()
+
+	tests := []struct {
+		name       string
+		url        string
+		setupStore func(*mockAuthStore)
+		wantCode   int
+		wantHTML   bool // true = expect HTML response (success or error page)
+	}{
+		{
+			name: "success",
+			url:  "/auth/verify?token=" + magicToken,
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
+					if hash == tokenHash {
+						return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: "dc_1", ExpiresAt: now.Add(15 * time.Minute)}, nil
+					}
+					return nil, store.ErrNotFound
+				}
+				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return nil }
+				ms.GetUserByEmailFn = func(_ context.Context, email string) (*model.User, error) {
+					return &model.User{ID: "usr_1", Email: email}, nil
+				}
+			},
+			wantCode: http.StatusOK,
+			wantHTML: true,
+		},
+		{
+			name:       "missing token param",
+			url:        "/auth/verify",
+			setupStore: func(ms *mockAuthStore) {},
+			wantCode:   http.StatusBadRequest,
+		},
+		{
+			name: "invalid token",
+			url:  "/auth/verify?token=invalid",
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetMagicLinkByTokenHashFn = func(context.Context, string) (*model.MagicLink, error) {
+					return nil, store.ErrNotFound
+				}
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "expired link",
+			url:  "/auth/verify?token=" + magicToken,
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
+					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: "dc_1", ExpiresAt: now.Add(-1 * time.Minute)}, nil
+				}
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "already used link",
+			url:  "/auth/verify?token=" + magicToken,
+			setupStore: func(ms *mockAuthStore) {
+				usedAt := now
+				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
+					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: "dc_1", ExpiresAt: now.Add(15 * time.Minute), UsedAt: &usedAt}, nil
+				}
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "MarkMagicLinkUsed fails",
+			url:  "/auth/verify?token=" + magicToken,
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
+					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: "dc_1", ExpiresAt: now.Add(15 * time.Minute)}, nil
+				}
+				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return errors.New("db error") }
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "user creation fails",
+			url:  "/auth/verify?token=" + magicToken,
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
+					return &model.MagicLink{ID: "ml_1", Email: "new@example.com", DeviceCode: "dc_1", ExpiresAt: now.Add(15 * time.Minute)}, nil
+				}
+				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return nil }
+				ms.GetUserByEmailFn = func(context.Context, string) (*model.User, error) { return nil, store.ErrNotFound }
+				ms.CreateUserFn = func(context.Context, string) (*model.User, error) { return nil, errors.New("db error") }
+			},
+			wantCode: http.StatusInternalServerError,
+		},
+		{
+			name: "AuthorizeMagicLinkByDeviceCode fails",
+			url:  "/auth/verify?token=" + magicToken,
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
+					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: "dc_1", ExpiresAt: now.Add(15 * time.Minute)}, nil
+				}
+				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return nil }
+				ms.GetUserByEmailFn = func(_ context.Context, email string) (*model.User, error) {
+					return &model.User{ID: "usr_1", Email: email}, nil
+				}
+				ms.AuthorizeMagicLinkByDeviceCodeFn = func(context.Context, string, string) error { return errors.New("db error") }
+			},
+			wantCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := &mockAuthStore{}
+			tt.setupStore(ms)
+			h := newTestAuthHandler(ms)
+
+			r := chi.NewRouter()
+			r.Get("/auth/verify", h.VerifyMagicLink)
+
+			req := httptest.NewRequest("GET", tt.url, nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantCode {
+				t.Errorf("got status %d, want %d (body=%s)", rec.Code, tt.wantCode, rec.Body.String())
+			}
+			if tt.wantHTML {
+				body := rec.Body.String()
+				if !strings.Contains(body, "<!DOCTYPE html>") {
+					t.Error("expected HTML response")
+				}
+			}
+		})
+	}
+}
+
+func TestAuthHandler_Logout(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name       string
+		userID     string
+		deviceID   string
+		body       any
+		setupStore func(*mockAuthStore)
+		wantCode   int
+	}{
+		{
+			name:     "logout with device ID",
+			userID:   "usr_1",
+			deviceID: "dev_abc",
+			setupStore: func(ms *mockAuthStore) {
+				ms.RevokeSessionByDeviceIDFn = func(_ context.Context, userID, deviceID string) error {
+					if userID != "usr_1" || deviceID != "dev_abc" {
+						return errors.New("unexpected args")
+					}
+					return nil
+				}
+			},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:   "logout with refresh token",
+			userID: "usr_1",
+			body: map[string]string{
+				"refresh_token": "some-refresh-token",
+			},
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetSessionByTokenHashFn = func(context.Context, string) (*model.Session, error) {
+					return &model.Session{ID: "ses_1", UserID: "usr_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
+				}
+				ms.RevokeSessionFn = func(_ context.Context, id string) error {
+					if id != "ses_1" {
+						return errors.New("unexpected session id")
+					}
+					return nil
+				}
+			},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "logout with both device ID and refresh token",
+			userID:   "usr_1",
+			deviceID: "dev_abc",
+			body: map[string]string{
+				"refresh_token": "some-refresh-token",
+			},
+			setupStore: func(ms *mockAuthStore) {
+				ms.RevokeSessionByDeviceIDFn = func(context.Context, string, string) error { return nil }
+				ms.GetSessionByTokenHashFn = func(context.Context, string) (*model.Session, error) {
+					return &model.Session{ID: "ses_1", UserID: "usr_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
+				}
+				ms.RevokeSessionFn = func(context.Context, string) error { return nil }
+			},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:       "unauthenticated request",
+			userID:     "",
+			setupStore: func(ms *mockAuthStore) {},
+			wantCode:   http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := &mockAuthStore{}
+			tt.setupStore(ms)
+			h := newTestAuthHandler(ms)
+
+			r := chi.NewRouter()
+			r.Post("/auth/logout", h.Logout)
+
+			req := requestWithUser("POST", "/auth/logout", tt.body, tt.userID)
+			if tt.deviceID != "" {
+				req.Header.Set("X-Device-ID", tt.deviceID)
+			}
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantCode {
+				t.Errorf("got status %d, want %d (body=%s)", rec.Code, tt.wantCode, rec.Body.String())
+			}
+			if tt.wantCode == http.StatusOK {
+				var resp map[string]any
+				decodeJSON(t, rec, &resp)
+				if resp["logged_out"] != true {
+					t.Error("expected logged_out=true")
+				}
+			}
+		})
 	}
 }
 

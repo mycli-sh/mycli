@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -103,27 +104,49 @@ func (h *AuthHandler) PollDeviceToken(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := *ml.UserID
 
-	// Consume all magic links for this device code
-	if err := h.store.DeleteMagicLinksByDeviceCode(ctx, req.DeviceCode); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to consume device session")
+	// Generate tokens (pure functions, no DB)
+	accessToken, err := authservice.GenerateJWTToken(h.cfg.JWTSecret, userID, "access", time.Hour)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "TOKEN_ERROR", "failed to generate token")
 		return
 	}
-
-	result, err := h.auth.IssueTokens(ctx, userID, r)
+	refreshToken, err := authservice.GenerateJWTToken(h.cfg.JWTSecret, userID, "refresh", 30*24*time.Hour)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "TOKEN_ERROR", "failed to generate token")
 		return
 	}
 
+	refreshTokenHash := authservice.HashToken(refreshToken)
+	userAgent := r.UserAgent()
+	ipAddress := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
+	}
+	deviceID := r.Header.Get("X-Device-ID")
+	deviceName := r.Header.Get("X-Device-Name")
+
+	// Atomically consume magic links + revoke old device session + create new session
+	sess, err := h.store.ConsumeAuthorizedDeviceCode(ctx, req.DeviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, time.Now().Add(30*24*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to consume device session")
+		return
+	}
+
+	// Look up user for needs_username (non-critical)
+	needsUsername := false
+	if user, err := h.store.GetUserByID(ctx, userID); err == nil {
+		needsUsername = user.Username == nil
+	}
+
 	resp := map[string]any{
-		"access_token":  result.AccessToken,
-		"refresh_token": result.RefreshToken,
-		"expires_in":    3600,
+		"access_token":   accessToken,
+		"refresh_token":  refreshToken,
+		"expires_in":     3600,
+		"needs_username": needsUsername,
 	}
-	if result.SessionID != "" {
-		resp["session_id"] = result.SessionID
+	if sess != nil {
+		resp["session_id"] = sess.ID
 	}
-	resp["needs_username"] = result.NeedsUsername
 
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -194,7 +217,7 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 func (h *AuthHandler) VerifyMagicLink(w http.ResponseWriter, r *http.Request) {
 	rawToken := r.URL.Query().Get("token")
 	if rawToken == "" {
-		http.Error(w, "missing token", http.StatusBadRequest)
+		renderVerifyError(w, http.StatusBadRequest, "Missing token")
 		return
 	}
 
@@ -203,34 +226,40 @@ func (h *AuthHandler) VerifyMagicLink(w http.ResponseWriter, r *http.Request) {
 
 	ml, err := h.store.GetMagicLinkByTokenHash(ctx, tokenHash)
 	if err != nil {
-		http.Error(w, "invalid or expired link", http.StatusBadRequest)
+		renderVerifyError(w, http.StatusBadRequest, "This link is invalid or has expired.")
 		return
 	}
 
 	if ml.UsedAt != nil || time.Now().After(ml.ExpiresAt) {
-		http.Error(w, "link already used or expired", http.StatusBadRequest)
+		renderVerifyError(w, http.StatusBadRequest, "This link has already been used or has expired.")
 		return
 	}
 
 	if err := h.store.MarkMagicLinkUsed(ctx, ml.ID); err != nil {
-		http.Error(w, "link already used or expired", http.StatusBadRequest)
+		renderVerifyError(w, http.StatusBadRequest, "This link has already been used or has expired.")
 		return
 	}
 
 	// Find or create user by email
-	user, err := h.auth.FindOrCreateUser(ctx, ml.Email, store.ErrNotFound)
+	user, err := h.auth.FindOrCreateUser(ctx, ml.Email)
 	if err != nil {
-		http.Error(w, "failed to create user", http.StatusInternalServerError)
+		renderVerifyError(w, http.StatusInternalServerError, "Something went wrong. Please try again.")
 		return
 	}
 
 	// Authorize the magic link (marks all magic links for this device code)
 	if err := h.store.AuthorizeMagicLinkByDeviceCode(ctx, ml.DeviceCode, user.ID); err != nil {
-		http.Error(w, "failed to authorize device", http.StatusInternalServerError)
+		renderVerifyError(w, http.StatusInternalServerError, "Something went wrong. Please try again.")
 		return
 	}
 
 	_ = verifiedTmpl.Execute(w, nil)
+}
+
+func renderVerifyError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_ = errorTmpl.Execute(w, message)
 }
 
 func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +315,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find or create user by email
-	user, err := h.auth.FindOrCreateUser(ctx, ml.Email, store.ErrNotFound)
+	user, err := h.auth.FindOrCreateUser(ctx, ml.Email)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create user")
 		return
@@ -437,7 +466,7 @@ func (h *AuthHandler) WebVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find or create user by email
-	user, err := h.auth.FindOrCreateUser(ctx, ml.Email, store.ErrNotFound)
+	user, err := h.auth.FindOrCreateUser(ctx, ml.Email)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create user")
 		return
@@ -497,3 +526,12 @@ const verifiedHTML = `<!DOCTYPE html>
 h1{font-size:1.5em}</style></head>
 <body><h1>Email verified!</h1>
 <p>You are now logged in. You can close this tab and return to your terminal.</p></body></html>`
+
+var errorTmpl = template.Must(template.New("error").Parse(errorHTML))
+
+const errorHTML = `<!DOCTYPE html>
+<html><head><title>mycli - Error</title>
+<style>body{font-family:system-ui;max-width:400px;margin:80px auto;padding:0 20px}
+h1{font-size:1.5em;color:#c00}</style></head>
+<body><h1>Verification failed</h1>
+<p>{{.}}</p></body></html>`

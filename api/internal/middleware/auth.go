@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -17,6 +18,36 @@ func GetUserID(ctx context.Context) string {
 	return v
 }
 
+// parseAccessToken validates a JWT string, checks that it uses HMAC signing,
+// is an "access" type token, and returns the subject (user ID).
+func parseAccessToken(jwtSecret, tokenStr string) (string, error) {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("invalid claims")
+	}
+
+	if tokenType, _ := claims["type"].(string); tokenType != "access" {
+		return "", errors.New("invalid token type")
+	}
+
+	sub, _ := claims["sub"].(string)
+	if sub == "" {
+		return "", errors.New("missing subject")
+	}
+
+	return sub, nil
+}
+
 // OptionalAuth parses the JWT if present but does not reject unauthenticated
 // requests. If the token is valid the user ID is placed into context; otherwise
 // the request continues with no user context.
@@ -26,21 +57,9 @@ func OptionalAuth(jwtSecret string) func(http.Handler) http.Handler {
 			authHeader := r.Header.Get("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-				token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
-					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-						return nil, jwt.ErrSignatureInvalid
-					}
-					return []byte(jwtSecret), nil
-				})
-				if err == nil && token.Valid {
-					if claims, ok := token.Claims.(jwt.MapClaims); ok {
-						if sub, _ := claims["sub"].(string); sub != "" {
-							if tokenType, _ := claims["type"].(string); tokenType == "access" {
-								ctx := context.WithValue(r.Context(), UserIDKey, sub)
-								r = r.WithContext(ctx)
-							}
-						}
-					}
+				if userID, err := parseAccessToken(jwtSecret, tokenStr); err == nil {
+					ctx := context.WithValue(r.Context(), UserIDKey, userID)
+					r = r.WithContext(ctx)
 				}
 			}
 			next.ServeHTTP(w, r)
@@ -58,36 +77,13 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 			}
 
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
-				}
-				return []byte(jwtSecret), nil
-			})
-			if err != nil || !token.Valid {
-				writeJSONError(w, http.StatusUnauthorized, `{"error":{"code":"UNAUTHORIZED","message":"invalid token"}}`)
+			userID, err := parseAccessToken(jwtSecret, tokenStr)
+			if err != nil {
+				writeJSONError(w, http.StatusUnauthorized, `{"error":{"code":"UNAUTHORIZED","message":"`+err.Error()+`"}}`)
 				return
 			}
 
-			claims, ok := token.Claims.(jwt.MapClaims)
-			if !ok {
-				writeJSONError(w, http.StatusUnauthorized, `{"error":{"code":"UNAUTHORIZED","message":"invalid claims"}}`)
-				return
-			}
-
-			sub, _ := claims["sub"].(string)
-			if sub == "" {
-				writeJSONError(w, http.StatusUnauthorized, `{"error":{"code":"UNAUTHORIZED","message":"missing subject"}}`)
-				return
-			}
-
-			tokenType, _ := claims["type"].(string)
-			if tokenType != "access" {
-				writeJSONError(w, http.StatusUnauthorized, `{"error":{"code":"UNAUTHORIZED","message":"invalid token type"}}`)
-				return
-			}
-
-			ctx := context.WithValue(r.Context(), UserIDKey, sub)
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

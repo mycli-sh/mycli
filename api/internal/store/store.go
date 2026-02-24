@@ -406,6 +406,43 @@ func (s *Store) DeleteExpiredMagicLinks(ctx context.Context) error {
 	return s.q.DeleteExpiredMagicLinks(ctx)
 }
 
+// ConsumeAuthorizedDeviceCode atomically deletes all magic links for the given
+// device code, revokes any existing session for the device, and creates a new
+// session — all within a single transaction.
+func (s *Store) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
+	var session *model.Session
+	err := s.withTx(ctx, func(tx *Store) error {
+		if err := tx.q.DeleteMagicLinksByDeviceCode(ctx, deviceCode); err != nil {
+			return fmt.Errorf("delete magic links: %w", err)
+		}
+		if deviceID != "" {
+			_ = tx.q.RevokeSessionByDeviceID(ctx, dbgen.RevokeSessionByDeviceIDParams{
+				UserID:   userID,
+				DeviceID: deviceID,
+			})
+		}
+		sess, err := tx.q.CreateSession(ctx, dbgen.CreateSessionParams{
+			UserID:           userID,
+			RefreshTokenHash: refreshTokenHash,
+			UserAgent:        userAgent,
+			IpAddress:        ipAddress,
+			DeviceID:         deviceID,
+			DeviceName:       deviceName,
+			ExpiresAt:        timeToTs(expiresAt),
+		})
+		if err != nil {
+			return fmt.Errorf("create session: %w", err)
+		}
+		m := toModelSessionFromCreate(sess)
+		session = &m
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
