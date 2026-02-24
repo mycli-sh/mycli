@@ -23,12 +23,10 @@ type Tokens struct {
 }
 
 type DeviceCodeResponse struct {
-	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`
-	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
-	EmailSent       bool   `json:"email_sent"`
+	DeviceCode string `json:"device_code"`
+	ExpiresIn  int    `json:"expires_in"`
+	Interval   int    `json:"interval"`
+	EmailSent  bool   `json:"email_sent"`
 }
 
 type TokenResponse struct {
@@ -93,7 +91,12 @@ func IsLoggedIn() bool {
 	if err != nil {
 		return false
 	}
-	return tokens.AccessToken != "" && time.Now().Before(tokens.ExpiresAt)
+	// Consider logged in if access token is valid OR a refresh token exists
+	// (the client will transparently refresh on 401)
+	if tokens.AccessToken != "" && time.Now().Before(tokens.ExpiresAt) {
+		return true
+	}
+	return tokens.RefreshToken != ""
 }
 
 func saveTokensToFile(data []byte) error {

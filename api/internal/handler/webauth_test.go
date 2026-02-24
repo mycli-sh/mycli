@@ -9,81 +9,34 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"mycli.sh/api/internal/authservice"
 	"mycli.sh/api/internal/config"
 	"mycli.sh/api/internal/model"
 	"mycli.sh/api/internal/store"
 )
 
-type mockWebAuthStore struct {
-	CreateMagicLinkFn         func(ctx context.Context, email, tokenHash, deviceCode string, otpHash *string, expiresAt time.Time) (*model.MagicLink, error)
-	GetMagicLinkByTokenHashFn func(ctx context.Context, tokenHash string) (*model.MagicLink, error)
-	MarkMagicLinkUsedFn       func(ctx context.Context, id string) error
-	GetUserByEmailFn          func(ctx context.Context, email string) (*model.User, error)
-	CreateUserFn              func(ctx context.Context, email string) (*model.User, error)
-	CreateSessionFn           func(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
-	RevokeSessionByDeviceIDFn func(ctx context.Context, userID, deviceID string) error
-	GetLibraryBySlugFn        func(ctx context.Context, slug string) (*model.Library, error)
-	InstallLibraryFn          func(ctx context.Context, userID, libraryID string) error
-}
-
-func (m *mockWebAuthStore) CreateMagicLink(ctx context.Context, email, tokenHash, deviceCode string, otpHash *string, expiresAt time.Time) (*model.MagicLink, error) {
-	return m.CreateMagicLinkFn(ctx, email, tokenHash, deviceCode, otpHash, expiresAt)
-}
-func (m *mockWebAuthStore) GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (*model.MagicLink, error) {
-	return m.GetMagicLinkByTokenHashFn(ctx, tokenHash)
-}
-func (m *mockWebAuthStore) MarkMagicLinkUsed(ctx context.Context, id string) error {
-	return m.MarkMagicLinkUsedFn(ctx, id)
-}
-func (m *mockWebAuthStore) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
-	return m.GetUserByEmailFn(ctx, email)
-}
-func (m *mockWebAuthStore) CreateUser(ctx context.Context, email string) (*model.User, error) {
-	return m.CreateUserFn(ctx, email)
-}
-func (m *mockWebAuthStore) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
-	return m.CreateSessionFn(ctx, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, expiresAt)
-}
-func (m *mockWebAuthStore) RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error {
-	if m.RevokeSessionByDeviceIDFn != nil {
-		return m.RevokeSessionByDeviceIDFn(ctx, userID, deviceID)
-	}
-	return nil
-}
-func (m *mockWebAuthStore) GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error) {
-	if m.GetLibraryBySlugFn != nil {
-		return m.GetLibraryBySlugFn(ctx, slug)
-	}
-	return nil, store.ErrNotFound
-}
-func (m *mockWebAuthStore) InstallLibrary(ctx context.Context, userID, libraryID string) error {
-	if m.InstallLibraryFn != nil {
-		return m.InstallLibraryFn(ctx, userID, libraryID)
-	}
-	return nil
-}
-
-func newTestWebAuthHandler(ms *mockWebAuthStore) *WebAuthHandler {
+func newTestWebAuthHandler(ms *mockAuthStore) *AuthHandler {
 	cfg := &config.Config{
 		JWTSecret:  "test-secret",
 		BaseURL:    "http://localhost:8080",
 		WebBaseURL: "http://localhost:5173",
 	}
-	return NewWebAuthHandler(cfg, ms, &mockEmailSender{})
+	authSvc := authservice.New(cfg.JWTSecret, ms)
+	return NewAuthHandler(cfg, ms, &mockEmailSender{}, authSvc)
 }
 
-func TestWebAuthHandler_Login(t *testing.T) {
+func TestWebAuth_Login(t *testing.T) {
 	tests := []struct {
 		name        string
 		body        any
-		setupStore  func(*mockWebAuthStore)
+		setupStore  func(*mockAuthStore)
 		wantCode    int
 		wantErrCode string
 	}{
 		{
 			name: "success",
 			body: map[string]string{"email": "user@example.com"},
-			setupStore: func(ms *mockWebAuthStore) {
+			setupStore: func(ms *mockAuthStore) {
 				ms.CreateMagicLinkFn = func(context.Context, string, string, string, *string, time.Time) (*model.MagicLink, error) {
 					return &model.MagicLink{ID: "ml_1"}, nil
 				}
@@ -93,14 +46,14 @@ func TestWebAuthHandler_Login(t *testing.T) {
 		{
 			name:        "empty email",
 			body:        map[string]string{"email": ""},
-			setupStore:  func(ms *mockWebAuthStore) {},
+			setupStore:  func(ms *mockAuthStore) {},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "INVALID_EMAIL",
 		},
 		{
 			name:        "invalid email",
 			body:        map[string]string{"email": "not-an-email"},
-			setupStore:  func(ms *mockWebAuthStore) {},
+			setupStore:  func(ms *mockAuthStore) {},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "INVALID_EMAIL",
 		},
@@ -108,12 +61,12 @@ func TestWebAuthHandler_Login(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms := &mockWebAuthStore{}
+			ms := &mockAuthStore{}
 			tt.setupStore(ms)
 			h := newTestWebAuthHandler(ms)
 
 			r := chi.NewRouter()
-			r.Post("/auth/web/login", h.Login)
+			r.Post("/auth/web/login", h.WebLogin)
 
 			req := requestWithUser("POST", "/auth/web/login", tt.body, "")
 			rec := httptest.NewRecorder()
@@ -133,15 +86,15 @@ func TestWebAuthHandler_Login(t *testing.T) {
 	}
 }
 
-func TestWebAuthHandler_Verify(t *testing.T) {
+func TestWebAuth_Verify(t *testing.T) {
 	now := time.Now()
-	magicToken := generateCode(32)
-	tokenHash := hashToken(magicToken)
+	magicToken := authservice.GenerateCode(32)
+	tokenHash := authservice.HashToken(magicToken)
 
 	tests := []struct {
 		name        string
 		body        any
-		setupStore  func(*mockWebAuthStore)
+		setupStore  func(*mockAuthStore)
 		wantCode    int
 		wantErrCode string
 		wantTokens  bool
@@ -149,7 +102,7 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 		{
 			name: "success - existing user",
 			body: map[string]string{"token": magicToken},
-			setupStore: func(ms *mockWebAuthStore) {
+			setupStore: func(ms *mockAuthStore) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
 						return &model.MagicLink{ID: "ml_1", Email: "user@example.com", ExpiresAt: now.Add(15 * time.Minute)}, nil
@@ -163,6 +116,9 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
 					return &model.Session{ID: "ses_1", UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				}
+				ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
+					return &model.User{ID: id, Email: "user@example.com"}, nil
+				}
 			},
 			wantCode:   http.StatusOK,
 			wantTokens: true,
@@ -170,7 +126,7 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 		{
 			name: "success - new user",
 			body: map[string]string{"token": magicToken},
-			setupStore: func(ms *mockWebAuthStore) {
+			setupStore: func(ms *mockAuthStore) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
 						return &model.MagicLink{ID: "ml_1", Email: "new@example.com", ExpiresAt: now.Add(15 * time.Minute)}, nil
@@ -187,6 +143,9 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
 					return &model.Session{ID: "ses_1", UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				}
+				ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {
+					return &model.User{ID: id, Email: "new@example.com"}, nil
+				}
 			},
 			wantCode:   http.StatusOK,
 			wantTokens: true,
@@ -194,14 +153,14 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 		{
 			name:        "missing token",
 			body:        map[string]string{"token": ""},
-			setupStore:  func(ms *mockWebAuthStore) {},
+			setupStore:  func(ms *mockAuthStore) {},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "MISSING_TOKEN",
 		},
 		{
 			name: "invalid token",
 			body: map[string]string{"token": "invalid-token"},
-			setupStore: func(ms *mockWebAuthStore) {
+			setupStore: func(ms *mockAuthStore) {
 				ms.GetMagicLinkByTokenHashFn = func(context.Context, string) (*model.MagicLink, error) {
 					return nil, store.ErrNotFound
 				}
@@ -212,7 +171,7 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 		{
 			name: "expired token",
 			body: map[string]string{"token": magicToken},
-			setupStore: func(ms *mockWebAuthStore) {
+			setupStore: func(ms *mockAuthStore) {
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
 						return &model.MagicLink{
@@ -229,7 +188,7 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 		{
 			name: "already used token",
 			body: map[string]string{"token": magicToken},
-			setupStore: func(ms *mockWebAuthStore) {
+			setupStore: func(ms *mockAuthStore) {
 				usedAt := now
 				ms.GetMagicLinkByTokenHashFn = func(_ context.Context, hash string) (*model.MagicLink, error) {
 					if hash == tokenHash {
@@ -249,12 +208,12 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms := &mockWebAuthStore{}
+			ms := &mockAuthStore{}
 			tt.setupStore(ms)
 			h := newTestWebAuthHandler(ms)
 
 			r := chi.NewRouter()
-			r.Post("/auth/web/verify", h.Verify)
+			r.Post("/auth/web/verify", h.WebVerify)
 
 			req := requestWithUser("POST", "/auth/web/verify", tt.body, "")
 			rec := httptest.NewRecorder()

@@ -56,14 +56,17 @@ func toModelCommandVersion(v dbgen.CommandVersion) model.CommandVersion {
 
 func toModelMagicLink(ml dbgen.MagicLink) model.MagicLink {
 	return model.MagicLink{
-		ID:         ml.ID,
-		Email:      ml.Email,
-		TokenHash:  ml.TokenHash,
-		DeviceCode: ml.DeviceCode,
-		OTPHash:    ml.OtpHash,
-		ExpiresAt:  tsToTime(ml.ExpiresAt),
-		UsedAt:     ml.UsedAt,
-		CreatedAt:  tsToTime(ml.CreatedAt),
+		ID:          ml.ID,
+		Email:       ml.Email,
+		TokenHash:   ml.TokenHash,
+		DeviceCode:  ml.DeviceCode,
+		OTPHash:     ml.OtpHash,
+		ExpiresAt:   tsToTime(ml.ExpiresAt),
+		UsedAt:      ml.UsedAt,
+		CreatedAt:   tsToTime(ml.CreatedAt),
+		Authorized:  ml.Authorized,
+		UserID:      ml.UserID,
+		OTPAttempts: int(ml.OtpAttempts),
 	}
 }
 
@@ -128,20 +131,6 @@ func toModelLibrary(l dbgen.Library) model.Library {
 		LatestVersion: l.LatestVersion,
 		CreatedAt:     tsToTime(l.CreatedAt),
 		UpdatedAt:     tsToTime(l.UpdatedAt),
-	}
-}
-
-func toModelDeviceSession(ds dbgen.DeviceSession) model.DeviceSession {
-	return model.DeviceSession{
-		ID:          ds.ID,
-		DeviceCode:  ds.DeviceCode,
-		UserCode:    ds.UserCode,
-		Email:       ds.Email,
-		ExpiresAt:   tsToTime(ds.ExpiresAt),
-		Authorized:  ds.Authorized,
-		UserID:      ds.UserID,
-		OTPAttempts: int(ds.OtpAttempts),
-		CreatedAt:   tsToTime(ds.CreatedAt),
 	}
 }
 

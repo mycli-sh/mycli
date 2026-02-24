@@ -54,25 +54,22 @@ type AuthStore interface {
 	CreateMagicLink(ctx context.Context, email, tokenHash, deviceCode string, otpHash *string, expiresAt time.Time) (*model.MagicLink, error)
 	GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (*model.MagicLink, error)
 	GetMagicLinkByOTPHash(ctx context.Context, otpHash string) (*model.MagicLink, error)
+	GetMagicLinkByDeviceCode(ctx context.Context, deviceCode string) (*model.MagicLink, error)
 	MarkMagicLinkUsed(ctx context.Context, id string) error
+	AuthorizeMagicLinkByDeviceCode(ctx context.Context, deviceCode, userID string) error
+	IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int, error)
+	DeleteMagicLinksByDeviceCode(ctx context.Context, deviceCode string) error
+	DeleteExpiredMagicLinks(ctx context.Context) error
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	CreateUser(ctx context.Context, email string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
 	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
+	RevokeSession(ctx context.Context, id string) error
 	GetSessionByTokenHash(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsed(ctx context.Context, id string) error
 	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
 	InstallLibrary(ctx context.Context, userID, libraryID string) error
-	CreateDeviceSession(ctx context.Context, deviceCode, userCode, email string, expiresAt time.Time) error
-	GetDeviceSessionByCode(ctx context.Context, deviceCode string) (*model.DeviceSession, error)
-	GetDeviceSessionByUserCode(ctx context.Context, userCode string) (*model.DeviceSession, error)
-	AuthorizeDeviceSession(ctx context.Context, deviceCode, userID string) error
-	IncrementDeviceOTPAttempts(ctx context.Context, deviceCode string) (int, error)
-	ResetDeviceOTPAndExtend(ctx context.Context, deviceCode string, expiresAt time.Time) error
-	DeleteDeviceSession(ctx context.Context, deviceCode string) error
-	DeleteExpiredDeviceSessions(ctx context.Context) error
-	WithTx(ctx context.Context, fn func(AuthStore) error) error
 }
 
 // LibraryStore is the subset of Store used by LibraryHandler.
@@ -99,17 +96,4 @@ type LibraryStore interface {
 	UninstallLibrary(ctx context.Context, userID, libraryID string) error
 	ListLibraryReleases(ctx context.Context, libraryID string) ([]model.LibraryRelease, error)
 	GetLibraryRelease(ctx context.Context, libraryID, version string) (*model.LibraryRelease, error)
-}
-
-// WebAuthStore is the subset of Store used by WebAuthHandler.
-type WebAuthStore interface {
-	CreateMagicLink(ctx context.Context, email, tokenHash, deviceCode string, otpHash *string, expiresAt time.Time) (*model.MagicLink, error)
-	GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (*model.MagicLink, error)
-	MarkMagicLinkUsed(ctx context.Context, id string) error
-	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
-	CreateUser(ctx context.Context, email string) (*model.User, error)
-	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
-	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
-	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
-	InstallLibrary(ctx context.Context, userID, libraryID string) error
 }

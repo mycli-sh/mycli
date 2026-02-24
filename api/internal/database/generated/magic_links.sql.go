@@ -11,10 +11,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const authorizeMagicLinkByDeviceCode = `-- name: AuthorizeMagicLinkByDeviceCode :execrows
+UPDATE magic_links SET authorized = true, user_id = $2
+WHERE device_code = $1 AND expires_at > NOW()
+`
+
+type AuthorizeMagicLinkByDeviceCodeParams struct {
+	DeviceCode string  `json:"device_code"`
+	UserID     *string `json:"user_id"`
+}
+
+func (q *Queries) AuthorizeMagicLinkByDeviceCode(ctx context.Context, arg AuthorizeMagicLinkByDeviceCodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, authorizeMagicLinkByDeviceCode, arg.DeviceCode, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createMagicLink = `-- name: CreateMagicLink :one
 INSERT INTO magic_links (email, token_hash, device_code, otp_hash, expires_at)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at
+RETURNING id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
 `
 
 type CreateMagicLinkParams struct {
@@ -43,12 +61,58 @@ func (q *Queries) CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.CreatedAt,
+		&i.Authorized,
+		&i.UserID,
+		&i.OtpAttempts,
+	)
+	return i, err
+}
+
+const deleteExpiredMagicLinks = `-- name: DeleteExpiredMagicLinks :exec
+DELETE FROM magic_links WHERE expires_at < NOW()
+`
+
+func (q *Queries) DeleteExpiredMagicLinks(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMagicLinks)
+	return err
+}
+
+const deleteMagicLinksByDeviceCode = `-- name: DeleteMagicLinksByDeviceCode :exec
+DELETE FROM magic_links WHERE device_code = $1
+`
+
+func (q *Queries) DeleteMagicLinksByDeviceCode(ctx context.Context, deviceCode string) error {
+	_, err := q.db.Exec(ctx, deleteMagicLinksByDeviceCode, deviceCode)
+	return err
+}
+
+const getMagicLinkByDeviceCode = `-- name: GetMagicLinkByDeviceCode :one
+SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
+FROM magic_links WHERE device_code = $1 AND expires_at > NOW()
+ORDER BY created_at DESC LIMIT 1
+`
+
+func (q *Queries) GetMagicLinkByDeviceCode(ctx context.Context, deviceCode string) (MagicLink, error) {
+	row := q.db.QueryRow(ctx, getMagicLinkByDeviceCode, deviceCode)
+	var i MagicLink
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.TokenHash,
+		&i.DeviceCode,
+		&i.OtpHash,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
+		&i.Authorized,
+		&i.UserID,
+		&i.OtpAttempts,
 	)
 	return i, err
 }
 
 const getMagicLinkByOTPHash = `-- name: GetMagicLinkByOTPHash :one
-SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at
+SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
 FROM magic_links WHERE otp_hash = $1 AND used_at IS NULL AND expires_at > NOW()
 ORDER BY created_at DESC LIMIT 1
 `
@@ -65,12 +129,15 @@ func (q *Queries) GetMagicLinkByOTPHash(ctx context.Context, otpHash *string) (M
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.CreatedAt,
+		&i.Authorized,
+		&i.UserID,
+		&i.OtpAttempts,
 	)
 	return i, err
 }
 
 const getMagicLinkByTokenHash = `-- name: GetMagicLinkByTokenHash :one
-SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at
+SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
 FROM magic_links WHERE token_hash = $1
 `
 
@@ -86,8 +153,24 @@ func (q *Queries) GetMagicLinkByTokenHash(ctx context.Context, tokenHash string)
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.CreatedAt,
+		&i.Authorized,
+		&i.UserID,
+		&i.OtpAttempts,
 	)
 	return i, err
+}
+
+const incrementMagicLinkOTPAttempts = `-- name: IncrementMagicLinkOTPAttempts :one
+UPDATE magic_links SET otp_attempts = otp_attempts + 1
+WHERE id = $1
+RETURNING otp_attempts
+`
+
+func (q *Queries) IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int32, error) {
+	row := q.db.QueryRow(ctx, incrementMagicLinkOTPAttempts, id)
+	var otp_attempts int32
+	err := row.Scan(&otp_attempts)
+	return otp_attempts, err
 }
 
 const markMagicLinkUsed = `-- name: MarkMagicLinkUsed :execrows

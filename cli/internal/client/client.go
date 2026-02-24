@@ -49,13 +49,22 @@ func (e *APIError) Error() string {
 }
 
 func (c *Client) do(method, path string, body any, out any) error {
-	var bodyReader io.Reader
+	return c.doWithRetry(method, path, body, out, false)
+}
+
+func (c *Client) doWithRetry(method, path string, body any, out any, isRetry bool) error {
+	var bodyData []byte
 	if body != nil {
-		data, err := json.Marshal(body)
+		var err error
+		bodyData, err = json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("marshal request: %w", err)
 		}
-		bodyReader = bytes.NewReader(data)
+	}
+
+	var bodyReader io.Reader
+	if bodyData != nil {
+		bodyReader = bytes.NewReader(bodyData)
 	}
 
 	req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
@@ -83,6 +92,13 @@ func (c *Client) do(method, path string, body any, out any) error {
 		return fmt.Errorf("read response: %w", err)
 	}
 
+	// On 401, attempt transparent token refresh (once)
+	if resp.StatusCode == http.StatusUnauthorized && !isRetry {
+		if c.tryRefresh() {
+			return c.doWithRetry(method, path, body, out, true)
+		}
+	}
+
 	if resp.StatusCode >= 400 {
 		var errResp struct {
 			Error APIError `json:"error"`
@@ -99,6 +115,25 @@ func (c *Client) do(method, path string, body any, out any) error {
 		}
 	}
 	return nil
+}
+
+// tryRefresh attempts to refresh the access token using the stored refresh token.
+// Returns true if the refresh succeeded and tokens were updated.
+func (c *Client) tryRefresh() bool {
+	tokens, err := auth.LoadTokens()
+	if err != nil || tokens.RefreshToken == "" {
+		return false
+	}
+
+	refreshResp, err := c.RefreshToken(tokens.RefreshToken)
+	if err != nil || refreshResp.AccessToken == "" {
+		return false
+	}
+
+	tokens.AccessToken = refreshResp.AccessToken
+	tokens.ExpiresAt = time.Now().Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	_ = auth.SaveTokens(tokens)
+	return true
 }
 
 // DoRaw performs an HTTP request and returns the raw response. Used for polling/device flow.
@@ -161,6 +196,14 @@ func (c *Client) ResendVerification(deviceCode, email string) (int, error) {
 		"email":       email,
 	}, &resp)
 	return resp.ExpiresIn, err
+}
+
+func (c *Client) Logout(refreshToken string) error {
+	var body map[string]string
+	if refreshToken != "" {
+		body = map[string]string{"refresh_token": refreshToken}
+	}
+	return c.do("POST", "/v1/auth/logout", body, nil)
 }
 
 func (c *Client) RefreshToken(refreshToken string) (*auth.TokenResponse, error) {

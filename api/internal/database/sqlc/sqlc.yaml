@@ -42,7 +42,7 @@ sql:
             go_type:
               type: "string"
               pointer: true
-          - column: "device_sessions.user_id"
+          - column: "magic_links.user_id"
             go_type:
               type: "string"
               pointer: true

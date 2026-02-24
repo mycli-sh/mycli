@@ -15,6 +15,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"mycli.sh/api/internal/authservice"
 	"mycli.sh/api/internal/config"
 	"mycli.sh/api/internal/database"
 	"mycli.sh/api/internal/email"
@@ -58,14 +59,16 @@ func main() {
 		emailSender = &email.LogSender{}
 	}
 
+	// Initialize auth service
+	authSvc := authservice.New(cfg.JWTSecret, s)
+
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(cfg, s, emailSender)
+	authHandler := handler.NewAuthHandler(cfg, s, emailSender, authSvc)
 	cmdHandler := handler.NewCommandHandler(s)
 	catalogHandler := handler.NewCatalogHandler(s)
 	meHandler := handler.NewMeHandler(s)
 	libraryHandler := handler.NewLibraryHandler(cfg, s)
 	sessionHandler := handler.NewSessionHandler(s)
-	webAuthHandler := handler.NewWebAuthHandler(cfg, s, emailSender)
 
 	// Rate limiters
 	authLimiter := middleware.NewRateLimiter(1, 10) // 1 req/sec, burst 10 for auth
@@ -99,17 +102,15 @@ func main() {
 		r.Post("/v1/auth/verify-code", authHandler.VerifyOTP)
 		r.Post("/v1/auth/refresh", authHandler.RefreshTokenHandler)
 
-		// Device verification pages (HTML)
-		r.Get("/device", authHandler.DevicePage)
-		r.Post("/device", authHandler.DeviceSubmit)
+		// Magic link verification (HTML)
 		r.Get("/v1/auth/verify", authHandler.VerifyMagicLink)
 
 		// Username availability (public)
 		r.Get("/v1/usernames/{username}/available", meHandler.CheckUsernameAvailable)
 
 		// Web auth flow
-		r.Post("/v1/auth/web/login", webAuthHandler.Login)
-		r.Post("/v1/auth/web/verify", webAuthHandler.Verify)
+		r.Post("/v1/auth/web/login", authHandler.WebLogin)
+		r.Post("/v1/auth/web/verify", authHandler.WebVerify)
 	})
 
 	// Library browsing routes (optional auth — works for anonymous + authenticated)
@@ -129,6 +130,9 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWTSecret))
 		r.Use(middleware.RateLimit(apiLimiter, middleware.UserKey))
+
+		// Auth
+		r.Post("/v1/auth/logout", authHandler.Logout)
 
 		// Me
 		r.Get("/v1/me", meHandler.GetMe)

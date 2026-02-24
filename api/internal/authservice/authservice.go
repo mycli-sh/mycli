@@ -1,0 +1,158 @@
+package authservice
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"math/big"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+
+	"mycli.sh/api/internal/model"
+)
+
+// Store defines the subset of store operations needed by the auth service.
+type Store interface {
+	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
+	CreateUser(ctx context.Context, email string) (*model.User, error)
+	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
+	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
+}
+
+// ErrNotFound is a sentinel to check against store.ErrNotFound without importing store.
+var ErrNotFound = errors.New("not found")
+
+// Service centralises auth business logic shared across handlers.
+type Service struct {
+	jwtSecret string
+	store     Store
+}
+
+// New creates a new auth service.
+func New(jwtSecret string, s Store) *Service {
+	return &Service{jwtSecret: jwtSecret, store: s}
+}
+
+// TokenResult holds the result of IssueTokens.
+type TokenResult struct {
+	AccessToken   string
+	RefreshToken  string
+	SessionID     string
+	NeedsUsername bool
+}
+
+// FindOrCreateUser looks up a user by email. If the user does not exist, it
+// creates one. The sentinel errNotFound must match the store's ErrNotFound.
+func (s *Service) FindOrCreateUser(ctx context.Context, email string, errNotFound error) (*model.User, error) {
+	user, err := s.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, errNotFound) {
+			return s.store.CreateUser(ctx, email)
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// IssueTokens generates JWT tokens (access 1h + refresh 30d), revokes any
+// existing session for the same device, creates a new session, and checks
+// whether the user still needs to set a username.
+func (s *Service) IssueTokens(ctx context.Context, userID string, r *http.Request) (*TokenResult, error) {
+	accessToken, err := GenerateJWTToken(s.jwtSecret, userID, "access", time.Hour)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := GenerateJWTToken(s.jwtSecret, userID, "refresh", 30*24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshTokenHash := HashToken(refreshToken)
+	userAgent := r.UserAgent()
+	ipAddress := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
+	}
+	deviceID := r.Header.Get("X-Device-ID")
+	deviceName := r.Header.Get("X-Device-Name")
+
+	// Revoke any existing session for this device before creating a new one
+	if deviceID != "" {
+		_ = s.store.RevokeSessionByDeviceID(ctx, userID, deviceID)
+	}
+
+	var sessionID string
+	if sess, err := s.store.CreateSession(ctx, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, time.Now().Add(30*24*time.Hour)); err == nil {
+		sessionID = sess.ID
+	}
+
+	needsUsername := false
+	if user, err := s.store.GetUserByID(ctx, userID); err == nil {
+		needsUsername = user.Username == nil
+	}
+
+	return &TokenResult{
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
+		SessionID:     sessionID,
+		NeedsUsername: needsUsername,
+	}, nil
+}
+
+// --- Utility functions (moved from handler package) ---
+
+// GenerateJWTToken creates a signed JWT with the given parameters.
+func GenerateJWTToken(secret, userID, tokenType string, duration time.Duration) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":  userID,
+		"type": tokenType,
+		"iat":  time.Now().Unix(),
+		"exp":  time.Now().Add(duration).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
+}
+
+// GenerateCode returns a cryptographically random hex string of the given byte length.
+func GenerateCode(length int) string {
+	b := make([]byte, length)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// GenerateOTP returns a 6-digit random OTP code.
+func GenerateOTP() string {
+	const digits = "0123456789"
+	code := make([]byte, 6)
+	for i := range code {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
+		code[i] = digits[n.Int64()]
+	}
+	return string(code)
+}
+
+// HashToken returns the SHA-256 hex digest of a token string.
+func HashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
+// ValidEmail performs a basic email validation check.
+func ValidEmail(email string) bool {
+	at := strings.LastIndex(email, "@")
+	if at < 1 {
+		return false
+	}
+	domain := email[at+1:]
+	if len(domain) < 3 || !strings.Contains(domain, ".") {
+		return false
+	}
+	return true
+}

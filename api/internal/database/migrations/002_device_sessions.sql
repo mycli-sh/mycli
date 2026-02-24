@@ -1,16 +1,26 @@
 -- +goose Up
-CREATE TABLE device_sessions
-(
-    id           TEXT PRIMARY KEY     DEFAULT 'ds_' || gen_random_uuid()::text,
-    device_code  TEXT        NOT NULL UNIQUE,
-    user_code    TEXT        NOT NULL,
-    email        TEXT        NOT NULL DEFAULT '',
-    expires_at   TIMESTAMPTZ NOT NULL,
-    authorized   BOOLEAN     NOT NULL DEFAULT false,
-    user_id      TEXT,
-    otp_attempts INTEGER     NOT NULL DEFAULT 0,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+ALTER TABLE sessions
+    ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions
+    ADD COLUMN device_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE magic_links
+    ADD COLUMN authorized BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE magic_links
+    ADD COLUMN user_id TEXT;
+ALTER TABLE magic_links
+    ADD COLUMN otp_attempts INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX idx_magic_links_device_code ON magic_links (device_code, created_at DESC);
 
 -- +goose Down
-DROP TABLE IF EXISTS device_sessions;
+DROP INDEX IF EXISTS idx_magic_links_device_code;
+ALTER TABLE magic_links
+    DROP COLUMN IF EXISTS otp_attempts;
+ALTER TABLE magic_links
+    DROP COLUMN IF EXISTS user_id;
+ALTER TABLE magic_links
+    DROP COLUMN IF EXISTS authorized;
+ALTER TABLE sessions
+    DROP COLUMN IF EXISTS device_name;
+ALTER TABLE sessions
+    DROP COLUMN IF EXISTS device_id;

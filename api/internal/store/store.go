@@ -57,13 +57,6 @@ func (s *Store) withTx(ctx context.Context, fn func(tx *Store) error) error {
 	return tx.Commit(ctx)
 }
 
-// WithTx runs fn inside a transaction, passing a transactional AuthStore.
-func (s *Store) WithTx(ctx context.Context, fn func(AuthStore) error) error {
-	return s.withTx(ctx, func(tx *Store) error {
-		return fn(tx)
-	})
-}
-
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
@@ -318,80 +311,6 @@ func (s *Store) GetLatestHashByCommand(ctx context.Context, commandID string) (s
 }
 
 // ---------------------------------------------------------------------------
-// Device Sessions
-// ---------------------------------------------------------------------------
-
-func (s *Store) CreateDeviceSession(ctx context.Context, deviceCode, userCode, email string, expiresAt time.Time) error {
-	return s.q.CreateDeviceSession(ctx, dbgen.CreateDeviceSessionParams{
-		DeviceCode: deviceCode,
-		UserCode:   userCode,
-		Email:      email,
-		ExpiresAt:  timeToTs(expiresAt),
-	})
-}
-
-func (s *Store) GetDeviceSessionByCode(ctx context.Context, deviceCode string) (*model.DeviceSession, error) {
-	ds, err := s.q.GetDeviceSessionByCode(ctx, deviceCode)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("get device session by code: %w", err)
-	}
-	m := toModelDeviceSession(ds)
-	return &m, nil
-}
-
-func (s *Store) GetDeviceSessionByUserCode(ctx context.Context, userCode string) (*model.DeviceSession, error) {
-	ds, err := s.q.GetDeviceSessionByUserCode(ctx, userCode)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("get device session by user code: %w", err)
-	}
-	m := toModelDeviceSession(ds)
-	return &m, nil
-}
-
-func (s *Store) AuthorizeDeviceSession(ctx context.Context, deviceCode, userID string) error {
-	rows, err := s.q.AuthorizeDeviceSession(ctx, dbgen.AuthorizeDeviceSessionParams{
-		DeviceCode: deviceCode,
-		UserID:     &userID,
-	})
-	if err != nil {
-		return fmt.Errorf("authorize device session: %w", err)
-	}
-	if rows == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-func (s *Store) IncrementDeviceOTPAttempts(ctx context.Context, deviceCode string) (int, error) {
-	attempts, err := s.q.IncrementDeviceOTPAttempts(ctx, deviceCode)
-	if err != nil {
-		return 0, fmt.Errorf("increment device otp attempts: %w", err)
-	}
-	return int(attempts), nil
-}
-
-func (s *Store) ResetDeviceOTPAndExtend(ctx context.Context, deviceCode string, expiresAt time.Time) error {
-	return s.q.ResetDeviceOTPAndExtend(ctx, dbgen.ResetDeviceOTPAndExtendParams{
-		DeviceCode: deviceCode,
-		ExpiresAt:  timeToTs(expiresAt),
-	})
-}
-
-func (s *Store) DeleteDeviceSession(ctx context.Context, deviceCode string) error {
-	return s.q.DeleteDeviceSession(ctx, deviceCode)
-}
-
-func (s *Store) DeleteExpiredDeviceSessions(ctx context.Context) error {
-	return s.q.DeleteExpiredDeviceSessions(ctx)
-}
-
-// ---------------------------------------------------------------------------
 // Magic Links
 // ---------------------------------------------------------------------------
 
@@ -443,6 +362,48 @@ func (s *Store) MarkMagicLinkUsed(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) GetMagicLinkByDeviceCode(ctx context.Context, deviceCode string) (*model.MagicLink, error) {
+	ml, err := s.q.GetMagicLinkByDeviceCode(ctx, deviceCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get magic link by device code: %w", err)
+	}
+	m := toModelMagicLink(ml)
+	return &m, nil
+}
+
+func (s *Store) AuthorizeMagicLinkByDeviceCode(ctx context.Context, deviceCode, userID string) error {
+	rows, err := s.q.AuthorizeMagicLinkByDeviceCode(ctx, dbgen.AuthorizeMagicLinkByDeviceCodeParams{
+		DeviceCode: deviceCode,
+		UserID:     &userID,
+	})
+	if err != nil {
+		return fmt.Errorf("authorize magic link: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) IncrementMagicLinkOTPAttempts(ctx context.Context, id string) (int, error) {
+	attempts, err := s.q.IncrementMagicLinkOTPAttempts(ctx, id)
+	if err != nil {
+		return 0, fmt.Errorf("increment magic link otp attempts: %w", err)
+	}
+	return int(attempts), nil
+}
+
+func (s *Store) DeleteMagicLinksByDeviceCode(ctx context.Context, deviceCode string) error {
+	return s.q.DeleteMagicLinksByDeviceCode(ctx, deviceCode)
+}
+
+func (s *Store) DeleteExpiredMagicLinks(ctx context.Context) error {
+	return s.q.DeleteExpiredMagicLinks(ctx)
 }
 
 // ---------------------------------------------------------------------------
