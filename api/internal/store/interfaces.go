@@ -58,7 +58,8 @@ type AuthStore interface {
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	CreateUser(ctx context.Context, email string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
-	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error)
+	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
+	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
 	GetSessionByTokenHash(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsed(ctx context.Context, id string) error
 	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
@@ -107,7 +108,8 @@ type WebAuthStore interface {
 	MarkMagicLinkUsed(ctx context.Context, id string) error
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	CreateUser(ctx context.Context, email string) (*model.User, error)
-	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error)
+	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
+	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
 	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
 	InstallLibrary(ctx context.Context, userID, libraryID string) error
 }

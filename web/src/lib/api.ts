@@ -213,6 +213,8 @@ export interface Session {
   id: string;
   user_agent: string;
   ip_address: string;
+  device_id: string;
+  device_name: string;
   last_used_at: string;
   expires_at: string;
   created_at: string;

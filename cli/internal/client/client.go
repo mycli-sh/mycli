@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"mycli.sh/cli/internal/auth"
+	"mycli.sh/cli/internal/config"
 )
+
+// Version is set at build time via -ldflags. Defaults to "dev".
+var Version = "dev"
 
 type Client struct {
 	baseURL    string
@@ -22,6 +27,15 @@ func New(baseURL string) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+	}
+}
+
+// setCommonHeaders sets User-Agent, X-Device-ID, and X-Device-Name on every request.
+func setCommonHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", "mycli/"+Version)
+	req.Header.Set("X-Device-ID", config.DeviceID())
+	if hostname, err := os.Hostname(); err == nil {
+		req.Header.Set("X-Device-Name", hostname)
 	}
 }
 
@@ -48,6 +62,7 @@ func (c *Client) do(method, path string, body any, out any) error {
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
+	setCommonHeaders(req)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -100,6 +115,7 @@ func (c *Client) DoRaw(method, path string, body any) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	setCommonHeaders(req)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -310,6 +326,7 @@ func (c *Client) GetCatalog(etag string) (*CatalogResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	setCommonHeaders(req)
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}

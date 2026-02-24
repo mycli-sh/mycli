@@ -32,6 +32,8 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 		ID         string `json:"id"`
 		UserAgent  string `json:"user_agent"`
 		IPAddress  string `json:"ip_address"`
+		DeviceID   string `json:"device_id"`
+		DeviceName string `json:"device_name"`
 		LastUsedAt string `json:"last_used_at"`
 		ExpiresAt  string `json:"expires_at"`
 		CreatedAt  string `json:"created_at"`
@@ -43,6 +45,8 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 			ID:         s.ID,
 			UserAgent:  s.UserAgent,
 			IPAddress:  s.IPAddress,
+			DeviceID:   s.DeviceID,
+			DeviceName: s.DeviceName,
 			LastUsedAt: s.LastUsedAt.Format("2006-01-02T15:04:05Z07:00"),
 			ExpiresAt:  s.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
 			CreatedAt:  s.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),

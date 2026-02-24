@@ -20,7 +20,8 @@ type mockWebAuthStore struct {
 	MarkMagicLinkUsedFn       func(ctx context.Context, id string) error
 	GetUserByEmailFn          func(ctx context.Context, email string) (*model.User, error)
 	CreateUserFn              func(ctx context.Context, email string) (*model.User, error)
-	CreateSessionFn           func(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error)
+	CreateSessionFn           func(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
+	RevokeSessionByDeviceIDFn func(ctx context.Context, userID, deviceID string) error
 	GetLibraryBySlugFn        func(ctx context.Context, slug string) (*model.Library, error)
 	InstallLibraryFn          func(ctx context.Context, userID, libraryID string) error
 }
@@ -40,8 +41,14 @@ func (m *mockWebAuthStore) GetUserByEmail(ctx context.Context, email string) (*m
 func (m *mockWebAuthStore) CreateUser(ctx context.Context, email string) (*model.User, error) {
 	return m.CreateUserFn(ctx, email)
 }
-func (m *mockWebAuthStore) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error) {
-	return m.CreateSessionFn(ctx, userID, refreshTokenHash, userAgent, ipAddress, expiresAt)
+func (m *mockWebAuthStore) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
+	return m.CreateSessionFn(ctx, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, expiresAt)
+}
+func (m *mockWebAuthStore) RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error {
+	if m.RevokeSessionByDeviceIDFn != nil {
+		return m.RevokeSessionByDeviceIDFn(ctx, userID, deviceID)
+	}
+	return nil
 }
 func (m *mockWebAuthStore) GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error) {
 	if m.GetLibraryBySlugFn != nil {
@@ -153,7 +160,7 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 				ms.GetUserByEmailFn = func(_ context.Context, email string) (*model.User, error) {
 					return &model.User{ID: "usr_1", Email: email}, nil
 				}
-				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _ string, _ time.Time) (*model.Session, error) {
+				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
 					return &model.Session{ID: "ses_1", UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				}
 			},
@@ -177,7 +184,7 @@ func TestWebAuthHandler_Verify(t *testing.T) {
 				ms.CreateUserFn = func(_ context.Context, email string) (*model.User, error) {
 					return &model.User{ID: "usr_new", Email: email}, nil
 				}
-				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _ string, _ time.Time) (*model.Session, error) {
+				ms.CreateSessionFn = func(_ context.Context, userID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {
 					return &model.Session{ID: "ses_1", UserID: userID, LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				}
 			},

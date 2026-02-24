@@ -139,8 +139,15 @@ func (h *WebAuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
 	}
+	deviceID := r.Header.Get("X-Device-ID")
+	deviceName := r.Header.Get("X-Device-Name")
 
-	session, err := h.store.CreateSession(ctx, user.ID, refreshTokenHash, userAgent, ipAddress, time.Now().Add(30*24*time.Hour))
+	// Revoke any existing session for this device before creating a new one
+	if deviceID != "" {
+		_ = h.store.RevokeSessionByDeviceID(ctx, user.ID, deviceID)
+	}
+
+	session, err := h.store.CreateSession(ctx, user.ID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, time.Now().Add(30*24*time.Hour))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create session")
 		return

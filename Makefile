@@ -3,8 +3,9 @@
 build-api:
 	go build -o bin/api ./api/cmd/api
 
+CLI_VERSION ?= dev
 build-cli:
-	go build -o bin/my ./cli/cmd/my
+	go build -ldflags "-X mycli.sh/cli/internal/client.Version=$(CLI_VERSION)" -o bin/my ./cli/cmd/my
 
 test:
 	go test ./...

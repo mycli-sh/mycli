@@ -145,7 +145,15 @@ func (h *AuthHandler) PollDeviceToken(w http.ResponseWriter, r *http.Request) {
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
 	}
-	if sess, err := h.store.CreateSession(ctx, userID, refreshTokenHash, userAgent, ipAddress, time.Now().Add(30*24*time.Hour)); err == nil {
+	deviceID := r.Header.Get("X-Device-ID")
+	deviceName := r.Header.Get("X-Device-Name")
+
+	// Revoke any existing session for this device before creating a new one
+	if deviceID != "" {
+		_ = h.store.RevokeSessionByDeviceID(ctx, userID, deviceID)
+	}
+
+	if sess, err := h.store.CreateSession(ctx, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, time.Now().Add(30*24*time.Hour)); err == nil {
 		sessionID = sess.ID
 	}
 

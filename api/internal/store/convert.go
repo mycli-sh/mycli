@@ -67,13 +67,47 @@ func toModelMagicLink(ml dbgen.MagicLink) model.MagicLink {
 	}
 }
 
-func toModelSession(s dbgen.Session) model.Session {
+func toModelSessionFromCreate(s dbgen.CreateSessionRow) model.Session {
 	return model.Session{
 		ID:               s.ID,
 		UserID:           s.UserID,
 		RefreshTokenHash: s.RefreshTokenHash,
 		UserAgent:        s.UserAgent,
 		IPAddress:        s.IpAddress,
+		DeviceID:         s.DeviceID,
+		DeviceName:       s.DeviceName,
+		LastUsedAt:       tsToTime(s.LastUsedAt),
+		ExpiresAt:        tsToTime(s.ExpiresAt),
+		RevokedAt:        s.RevokedAt,
+		CreatedAt:        tsToTime(s.CreatedAt),
+	}
+}
+
+func toModelSessionFromList(s dbgen.ListSessionsByUserRow) model.Session {
+	return model.Session{
+		ID:               s.ID,
+		UserID:           s.UserID,
+		RefreshTokenHash: s.RefreshTokenHash,
+		UserAgent:        s.UserAgent,
+		IPAddress:        s.IpAddress,
+		DeviceID:         s.DeviceID,
+		DeviceName:       s.DeviceName,
+		LastUsedAt:       tsToTime(s.LastUsedAt),
+		ExpiresAt:        tsToTime(s.ExpiresAt),
+		RevokedAt:        s.RevokedAt,
+		CreatedAt:        tsToTime(s.CreatedAt),
+	}
+}
+
+func toModelSessionFromTokenHash(s dbgen.GetSessionByTokenHashRow) model.Session {
+	return model.Session{
+		ID:               s.ID,
+		UserID:           s.UserID,
+		RefreshTokenHash: s.RefreshTokenHash,
+		UserAgent:        s.UserAgent,
+		IPAddress:        s.IpAddress,
+		DeviceID:         s.DeviceID,
+		DeviceName:       s.DeviceName,
 		LastUsedAt:       tsToTime(s.LastUsedAt),
 		ExpiresAt:        tsToTime(s.ExpiresAt),
 		RevokedAt:        s.RevokedAt,

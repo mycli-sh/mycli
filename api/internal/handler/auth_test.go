@@ -24,7 +24,8 @@ type mockAuthStore struct {
 	GetUserByEmailFn          func(ctx context.Context, email string) (*model.User, error)
 	CreateUserFn              func(ctx context.Context, email string) (*model.User, error)
 	GetUserByIDFn             func(ctx context.Context, id string) (*model.User, error)
-	CreateSessionFn           func(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error)
+	CreateSessionFn           func(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
+	RevokeSessionByDeviceIDFn func(ctx context.Context, userID, deviceID string) error
 	GetSessionByTokenHashFn   func(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsedFn   func(ctx context.Context, id string) error
 	GetLibraryBySlugFn        func(ctx context.Context, slug string) (*model.Library, error)
@@ -63,8 +64,14 @@ func (m *mockAuthStore) CreateUser(ctx context.Context, email string) (*model.Us
 func (m *mockAuthStore) GetUserByID(ctx context.Context, id string) (*model.User, error) {
 	return m.GetUserByIDFn(ctx, id)
 }
-func (m *mockAuthStore) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error) {
-	return m.CreateSessionFn(ctx, userID, refreshTokenHash, userAgent, ipAddress, expiresAt)
+func (m *mockAuthStore) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
+	return m.CreateSessionFn(ctx, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, expiresAt)
+}
+func (m *mockAuthStore) RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error {
+	if m.RevokeSessionByDeviceIDFn != nil {
+		return m.RevokeSessionByDeviceIDFn(ctx, userID, deviceID)
+	}
+	return nil
 }
 func (m *mockAuthStore) GetSessionByTokenHash(ctx context.Context, tokenHash string) (*model.Session, error) {
 	return m.GetSessionByTokenHashFn(ctx, tokenHash)
@@ -319,7 +326,7 @@ func TestAuthHandler_PollDeviceToken(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			now := time.Now()
 			ms := &mockAuthStore{
-				CreateSessionFn: func(context.Context, string, string, string, string, time.Time) (*model.Session, error) {
+				CreateSessionFn: func(context.Context, string, string, string, string, string, string, time.Time) (*model.Session, error) {
 					return &model.Session{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 				},
 				GetUserByIDFn: func(_ context.Context, id string) (*model.User, error) {
@@ -864,7 +871,7 @@ func TestAuthHandler_DeviceFlow_EndToEnd(t *testing.T) {
 
 	// Step 3: Poll for token — should now be authorized
 	now := time.Now()
-	ms.CreateSessionFn = func(context.Context, string, string, string, string, time.Time) (*model.Session, error) {
+	ms.CreateSessionFn = func(context.Context, string, string, string, string, string, string, time.Time) (*model.Session, error) {
 		return &model.Session{ID: "ses_1", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
 	}
 	ms.GetUserByIDFn = func(_ context.Context, id string) (*model.User, error) {

@@ -21,11 +21,17 @@ function formatDate(iso: string) {
 
 function parseUserAgent(ua: string) {
   if (!ua) return "Unknown device";
+  if (ua.startsWith("mycli/")) return `mycli CLI (${ua})`;
   if (ua.includes("mycli")) return "mycli CLI";
   if (ua.includes("Chrome")) return "Chrome";
   if (ua.includes("Firefox")) return "Firefox";
   if (ua.includes("Safari")) return "Safari";
   return ua.slice(0, 40);
+}
+
+function formatDeviceName(name: string) {
+  // Strip common suffixes like ".local" for cleaner display
+  return name.replace(/\.local$/, "");
 }
 
 export function SessionRow({
@@ -39,11 +45,14 @@ export function SessionRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium text-zinc-100">
-            {parseUserAgent(session.user_agent)}
+            {session.device_name
+              ? formatDeviceName(session.device_name)
+              : parseUserAgent(session.user_agent)}
           </span>
           {isCurrent && <Badge variant="info">Current</Badge>}
         </div>
         <div className="flex items-center gap-3 text-xs text-zinc-500">
+          <span>{parseUserAgent(session.user_agent)}</span>
           <span>{session.ip_address}</span>
           <span>Last used {formatDate(session.last_used_at)}</span>
           <span>Created {formatDate(session.created_at)}</span>

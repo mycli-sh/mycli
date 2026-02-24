@@ -17,7 +17,7 @@ type Querier interface {
 	CreateLibraryRelease(ctx context.Context, arg CreateLibraryReleaseParams) (LibraryRelease, error)
 	CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams) (MagicLink, error)
 	CreateOrUpdateLibrary(ctx context.Context, arg CreateOrUpdateLibraryParams) (Library, error)
-	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
+	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
 	CreateUser(ctx context.Context, btrim string) (User, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (CommandVersion, error)
 	DecrementInstallCount(ctx context.Context, id string) error
@@ -38,7 +38,7 @@ type Querier interface {
 	GetMagicLinkByOTPHash(ctx context.Context, otpHash *string) (MagicLink, error)
 	GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (MagicLink, error)
 	GetOwnerName(ctx context.Context, id string) (*string, error)
-	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
+	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (GetSessionByTokenHashRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, lower string) (User, error)
@@ -52,12 +52,13 @@ type Querier interface {
 	ListCommandsByLibrary(ctx context.Context, libraryID *string) ([]ListCommandsByLibraryRow, error)
 	ListLibraries(ctx context.Context) ([]Library, error)
 	ListLibraryReleases(ctx context.Context, libraryID string) ([]LibraryRelease, error)
-	ListSessionsByUser(ctx context.Context, userID string) ([]Session, error)
+	ListSessionsByUser(ctx context.Context, userID string) ([]ListSessionsByUserRow, error)
 	ListVersionsByCommand(ctx context.Context, commandID string) ([]CommandVersion, error)
 	MarkMagicLinkUsed(ctx context.Context, id string) (int64, error)
 	ResetDeviceOTPAndExtend(ctx context.Context, arg ResetDeviceOTPAndExtendParams) error
 	RevokeAllSessionsExcept(ctx context.Context, arg RevokeAllSessionsExceptParams) (int64, error)
 	RevokeSession(ctx context.Context, id string) (int64, error)
+	RevokeSessionByDeviceID(ctx context.Context, arg RevokeSessionByDeviceIDParams) error
 	SetUsername(ctx context.Context, arg SetUsernameParams) (int64, error)
 	SoftDeleteCommand(ctx context.Context, id string) (int64, error)
 	UninstallLibrary(ctx context.Context, arg UninstallLibraryParams) (int64, error)

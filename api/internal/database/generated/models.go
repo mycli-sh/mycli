@@ -100,6 +100,8 @@ type Session struct {
 	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
 	RevokedAt        *time.Time         `json:"revoked_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	DeviceID         string             `json:"device_id"`
+	DeviceName       string             `json:"device_name"`
 }
 
 type User struct {

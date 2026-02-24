@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/google/uuid"
 )
 
 // DefaultAPIURL can be set at build time via -ldflags to override the default.
@@ -49,6 +51,23 @@ func Load() (*Config, error) {
 		cfg.APIURL = DefaultAPI()
 	}
 	return cfg, nil
+}
+
+// DeviceID returns a persistent device identifier. It reads from ~/.my/device_id
+// if the file exists; otherwise it generates a new UUID, writes it, and returns it.
+func DeviceID() string {
+	dir := DefaultDir()
+	path := filepath.Join(dir, "device_id")
+	data, err := os.ReadFile(path)
+	if err == nil {
+		if id := string(data); id != "" {
+			return id
+		}
+	}
+	id := uuid.New().String()
+	_ = os.MkdirAll(dir, 0700)
+	_ = os.WriteFile(path, []byte(id), 0600)
+	return id
 }
 
 func (c *Config) Save() error {

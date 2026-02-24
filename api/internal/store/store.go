@@ -449,18 +449,20 @@ func (s *Store) MarkMagicLinkUsed(ctx context.Context, id string) error {
 // Sessions
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress string, expiresAt time.Time) (*model.Session, error) {
+func (s *Store) CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error) {
 	sess, err := s.q.CreateSession(ctx, dbgen.CreateSessionParams{
 		UserID:           userID,
 		RefreshTokenHash: refreshTokenHash,
 		UserAgent:        userAgent,
 		IpAddress:        ipAddress,
+		DeviceID:         deviceID,
+		DeviceName:       deviceName,
 		ExpiresAt:        timeToTs(expiresAt),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
-	m := toModelSession(sess)
+	m := toModelSessionFromCreate(sess)
 	return &m, nil
 }
 
@@ -471,7 +473,7 @@ func (s *Store) ListSessionsByUser(ctx context.Context, userID string) ([]model.
 	}
 	sessions := make([]model.Session, len(rows))
 	for i, r := range rows {
-		sessions[i] = toModelSession(r)
+		sessions[i] = toModelSessionFromList(r)
 	}
 	return sessions, nil
 }
@@ -484,7 +486,7 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (*m
 		}
 		return nil, fmt.Errorf("get session by token hash: %w", err)
 	}
-	m := toModelSession(sess)
+	m := toModelSessionFromTokenHash(sess)
 	return &m, nil
 }
 
@@ -508,6 +510,13 @@ func (s *Store) RevokeAllSessionsExcept(ctx context.Context, userID, exceptID st
 		return 0, fmt.Errorf("revoke all sessions: %w", err)
 	}
 	return count, nil
+}
+
+func (s *Store) RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error {
+	return s.q.RevokeSessionByDeviceID(ctx, dbgen.RevokeSessionByDeviceIDParams{
+		UserID:   userID,
+		DeviceID: deviceID,
+	})
 }
 
 func (s *Store) UpdateSessionLastUsed(ctx context.Context, id string) error {
