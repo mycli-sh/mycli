@@ -87,6 +87,7 @@ type LibraryStore interface {
 	ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]LibraryCommand, error)
 	IsLibraryInstalled(ctx context.Context, userID, libraryID uuid.UUID) bool
 	GetCommandByLibraryAndSlug(ctx context.Context, libraryID uuid.UUID, slug string) (*model.Command, error)
+	SoftDeleteCommand(ctx context.Context, id uuid.UUID) error
 	CreateCommandForLibrary(ctx context.Context, ownerID, libraryID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error)
 	UpdateCommandMeta(ctx context.Context, id uuid.UUID, name, description string, tags json.RawMessage) error
 	GetLatestHashByCommand(ctx context.Context, commandID uuid.UUID) (string, error)

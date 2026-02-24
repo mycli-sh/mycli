@@ -127,8 +127,10 @@ func (h *LibraryHandler) GetDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 // publishCommands publishes command specs to a library, creating or updating commands as needed.
-func (h *LibraryHandler) publishCommands(ctx context.Context, userID, libraryID uuid.UUID, commands []json.RawMessage) (int, error) {
+// Returns the count of published commands, the slugs of all published commands, and any error.
+func (h *LibraryHandler) publishCommands(ctx context.Context, userID, libraryID uuid.UUID, commands []json.RawMessage) (int, []string, error) {
 	published := 0
+	var slugs []string
 	for _, cmdJSON := range commands {
 		parsed, err := spec.Parse(cmdJSON)
 		if err != nil {
@@ -161,6 +163,7 @@ func (h *LibraryHandler) publishCommands(ctx context.Context, userID, libraryID 
 		// Skip if identical to latest
 		if existingHash, err := h.store.GetLatestHashByCommand(ctx, cmd.ID); err == nil && existingHash == hash {
 			published++
+			slugs = append(slugs, cmdSlug)
 			continue
 		}
 
@@ -173,8 +176,9 @@ func (h *LibraryHandler) publishCommands(ctx context.Context, userID, libraryID 
 			continue
 		}
 		published++
+		slugs = append(slugs, cmdSlug)
 	}
-	return published, nil
+	return published, slugs, nil
 }
 
 // CreateRelease handles POST /v1/libraries/{slug}/releases
@@ -260,10 +264,23 @@ func (h *LibraryHandler) CreateRelease(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Publish commands (use ownerID for library ownership, userID for audit trail)
-	published, err := h.publishCommands(r.Context(), ownerID, lib.ID, req.Commands)
+	published, publishedSlugs, err := h.publishCommands(r.Context(), ownerID, lib.ID, req.Commands)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to publish commands")
 		return
+	}
+
+	// Soft-delete commands removed from this release
+	if allCmds, err := h.store.ListCommandsByLibrary(r.Context(), lib.ID); err == nil {
+		publishedSet := make(map[string]bool, len(publishedSlugs))
+		for _, s := range publishedSlugs {
+			publishedSet[s] = true
+		}
+		for _, cmd := range allCmds {
+			if !publishedSet[cmd.Slug] {
+				_ = h.store.SoftDeleteCommand(r.Context(), cmd.CommandID)
+			}
+		}
 	}
 
 	// Create release record (releasedBy = real user for audit trail)

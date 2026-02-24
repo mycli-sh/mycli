@@ -25,6 +25,7 @@ type mockLibraryStore struct {
 	ListCommandsByLibraryFn            func(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error)
 	IsLibraryInstalledFn               func(ctx context.Context, userID, libraryID uuid.UUID) bool
 	GetCommandByLibraryAndSlugFn       func(ctx context.Context, libraryID uuid.UUID, slug string) (*model.Command, error)
+	SoftDeleteCommandFn                func(ctx context.Context, id uuid.UUID) error
 	CreateCommandForLibraryFn          func(ctx context.Context, ownerID, libraryID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error)
 	UpdateCommandMetaFn                func(ctx context.Context, id uuid.UUID, name, description string, tags json.RawMessage) error
 	GetLatestHashByCommandFn           func(ctx context.Context, commandID uuid.UUID) (string, error)
@@ -60,7 +61,10 @@ func (m *mockLibraryStore) GetLibraryBySlug(ctx context.Context, slug string) (*
 	return m.GetLibraryBySlugFn(ctx, slug)
 }
 func (m *mockLibraryStore) ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error) {
-	return m.ListCommandsByLibraryFn(ctx, libraryID)
+	if m.ListCommandsByLibraryFn != nil {
+		return m.ListCommandsByLibraryFn(ctx, libraryID)
+	}
+	return nil, nil
 }
 func (m *mockLibraryStore) IsLibraryInstalled(ctx context.Context, userID, libraryID uuid.UUID) bool {
 	if m.IsLibraryInstalledFn != nil {
@@ -70,6 +74,12 @@ func (m *mockLibraryStore) IsLibraryInstalled(ctx context.Context, userID, libra
 }
 func (m *mockLibraryStore) GetCommandByLibraryAndSlug(ctx context.Context, libraryID uuid.UUID, slug string) (*model.Command, error) {
 	return m.GetCommandByLibraryAndSlugFn(ctx, libraryID, slug)
+}
+func (m *mockLibraryStore) SoftDeleteCommand(ctx context.Context, id uuid.UUID) error {
+	if m.SoftDeleteCommandFn != nil {
+		return m.SoftDeleteCommandFn(ctx, id)
+	}
+	return nil
 }
 func (m *mockLibraryStore) CreateCommandForLibrary(ctx context.Context, ownerID, libraryID uuid.UUID, name, slug, description string, tags json.RawMessage) (*model.Command, error) {
 	return m.CreateCommandForLibraryFn(ctx, ownerID, libraryID, name, slug, description, tags)
@@ -723,4 +733,87 @@ func TestLibraryHandler_CreateRelease_SystemNamespace(t *testing.T) {
 			t.Errorf("got error code %q, want %q", resp.Error.Code, "FORBIDDEN")
 		}
 	})
+}
+
+func TestLibraryHandler_CreateRelease_SoftDeletesStaleCommands(t *testing.T) {
+	validSpec := json.RawMessage(`{
+		"schemaVersion": 1,
+		"kind": "command",
+		"metadata": {"name": "deploy", "slug": "deploy"},
+		"steps": [{"name": "run", "run": "echo hello"}]
+	}`)
+
+	staleCmd := uuid.MustParse("00000000-0000-4000-8000-000000000099")
+	var softDeleted []uuid.UUID
+
+	ms := &mockLibraryStore{
+		CreateOrUpdateLibraryFn: func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+			return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
+		},
+		LibraryReleaseExistsFn: func(context.Context, uuid.UUID, string) (bool, error) {
+			return false, nil
+		},
+		GetCommandByLibraryAndSlugFn: func(context.Context, uuid.UUID, string) (*model.Command, error) {
+			return nil, store.ErrNotFound
+		},
+		CreateCommandForLibraryFn: func(_ context.Context, _, _ uuid.UUID, name, slug, _ string, _ json.RawMessage) (*model.Command, error) {
+			return &model.Command{ID: testCmd1, Name: name, Slug: slug}, nil
+		},
+		GetLatestHashByCommandFn: func(context.Context, uuid.UUID) (string, error) {
+			return "", store.ErrNotFound
+		},
+		GetLatestVersionByCommandFn: func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
+			return nil, store.ErrNotFound
+		},
+		CreateVersionFn: func(_ context.Context, cmdID uuid.UUID, ver int, _ json.RawMessage, hash, _ string, _ uuid.UUID) (*model.CommandVersion, error) {
+			return &model.CommandVersion{ID: testCV1, CommandID: cmdID, Version: ver, SpecHash: hash}, nil
+		},
+		// Return two commands: "deploy" (still in release) and "something" (stale)
+		ListCommandsByLibraryFn: func(context.Context, uuid.UUID) ([]store.LibraryCommand, error) {
+			return []store.LibraryCommand{
+				{CommandID: testCmd1, Slug: "deploy", Name: "deploy"},
+				{CommandID: staleCmd, Slug: "something", Name: "something"},
+			}, nil
+		},
+		SoftDeleteCommandFn: func(_ context.Context, id uuid.UUID) error {
+			softDeleted = append(softDeleted, id)
+			return nil
+		},
+		CreateLibraryReleaseFn: func(_ context.Context, libID uuid.UUID, version, tag, commit string, count int, by uuid.UUID) (*model.LibraryRelease, error) {
+			return &model.LibraryRelease{
+				ID: uuid.MustParse("00000000-0000-4000-8000-000000000060"), LibraryID: libID, Version: version, Tag: tag,
+				CommitHash: commit, CommandCount: count, ReleasedBy: by,
+				ReleasedAt: time.Now(),
+			}, nil
+		},
+		UpdateLibraryLatestVersionFn: func(context.Context, uuid.UUID, string) error {
+			return nil
+		},
+	}
+
+	h := NewLibraryHandler(&config.Config{}, ms)
+
+	r := chi.NewRouter()
+	r.Post("/libraries/{slug}/releases", h.CreateRelease)
+
+	body := map[string]any{
+		"tag":         "v2.0.0",
+		"commit_hash": "def456",
+		"name":        "Kubernetes",
+		"commands":    []json.RawMessage{validSpec},
+	}
+	req := requestWithUser("POST", "/libraries/kubernetes/releases", body, testUser2)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	if len(softDeleted) != 1 {
+		t.Fatalf("expected 1 soft-deleted command, got %d", len(softDeleted))
+	}
+	if softDeleted[0] != staleCmd {
+		t.Errorf("soft-deleted command ID = %s, want %s", softDeleted[0], staleCmd)
+	}
 }
