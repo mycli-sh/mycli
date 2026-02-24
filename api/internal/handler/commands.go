@@ -19,10 +19,10 @@ import (
 var slugPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 type CommandHandler struct {
-	store CommandStore
+	store store.CommandStore
 }
 
-func NewCommandHandler(s CommandStore) *CommandHandler {
+func NewCommandHandler(s store.CommandStore) *CommandHandler {
 	return &CommandHandler{store: s}
 }
 

@@ -42,6 +42,10 @@ sql:
             go_type:
               type: "string"
               pointer: true
+          - column: "device_sessions.user_id"
+            go_type:
+              type: "string"
+              pointer: true
           # Nullable TIMESTAMPTZ -> *time.Time
           - column: "commands.deleted_at"
             go_type:

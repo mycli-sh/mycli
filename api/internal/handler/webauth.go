@@ -14,11 +14,11 @@ import (
 
 type WebAuthHandler struct {
 	cfg   *config.Config
-	store WebAuthStore
+	store store.WebAuthStore
 	email email.Sender
 }
 
-func NewWebAuthHandler(cfg *config.Config, s WebAuthStore, emailSender email.Sender) *WebAuthHandler {
+func NewWebAuthHandler(cfg *config.Config, s store.WebAuthStore, emailSender email.Sender) *WebAuthHandler {
 	return &WebAuthHandler{
 		cfg:   cfg,
 		store: s,

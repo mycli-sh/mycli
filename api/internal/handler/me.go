@@ -22,10 +22,10 @@ var (
 )
 
 type MeHandler struct {
-	store MeStore
+	store store.MeStore
 }
 
-func NewMeHandler(s MeStore) *MeHandler {
+func NewMeHandler(s store.MeStore) *MeHandler {
 	return &MeHandler{store: s}
 }
 

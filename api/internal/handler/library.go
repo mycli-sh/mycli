@@ -25,10 +25,10 @@ var tagPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 
 type LibraryHandler struct {
 	cfg   *config.Config
-	store LibraryStore
+	store store.LibraryStore
 }
 
-func NewLibraryHandler(cfg *config.Config, s LibraryStore) *LibraryHandler {
+func NewLibraryHandler(cfg *config.Config, s store.LibraryStore) *LibraryHandler {
 	return &LibraryHandler{cfg: cfg, store: s}
 }
 

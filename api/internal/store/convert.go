@@ -97,6 +97,20 @@ func toModelLibrary(l dbgen.Library) model.Library {
 	}
 }
 
+func toModelDeviceSession(ds dbgen.DeviceSession) model.DeviceSession {
+	return model.DeviceSession{
+		ID:          ds.ID,
+		DeviceCode:  ds.DeviceCode,
+		UserCode:    ds.UserCode,
+		Email:       ds.Email,
+		ExpiresAt:   tsToTime(ds.ExpiresAt),
+		Authorized:  ds.Authorized,
+		UserID:      ds.UserID,
+		OTPAttempts: int(ds.OtpAttempts),
+		CreatedAt:   tsToTime(ds.CreatedAt),
+	}
+}
+
 func toModelLibraryRelease(r dbgen.LibraryRelease) model.LibraryRelease {
 	return model.LibraryRelease{
 		ID:           r.ID,

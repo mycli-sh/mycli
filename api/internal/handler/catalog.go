@@ -7,13 +7,14 @@ import (
 	"net/http"
 
 	"mycli.sh/api/internal/middleware"
+	"mycli.sh/api/internal/store"
 )
 
 type CatalogHandler struct {
-	store CatalogStore
+	store store.CatalogStore
 }
 
-func NewCatalogHandler(s CatalogStore) *CatalogHandler {
+func NewCatalogHandler(s store.CatalogStore) *CatalogHandler {
 	return &CatalogHandler{store: s}
 }
 

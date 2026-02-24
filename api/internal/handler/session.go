@@ -11,10 +11,10 @@ import (
 )
 
 type SessionHandler struct {
-	store SessionStore
+	store store.SessionStore
 }
 
-func NewSessionHandler(s SessionStore) *SessionHandler {
+func NewSessionHandler(s store.SessionStore) *SessionHandler {
 	return &SessionHandler{store: s}
 }
 

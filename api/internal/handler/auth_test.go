@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,6 +29,17 @@ type mockAuthStore struct {
 	UpdateSessionLastUsedFn   func(ctx context.Context, id string) error
 	GetLibraryBySlugFn        func(ctx context.Context, slug string) (*model.Library, error)
 	InstallLibraryFn          func(ctx context.Context, userID, libraryID string) error
+
+	// Device session mocks
+	CreateDeviceSessionFn         func(ctx context.Context, deviceCode, userCode, email string, expiresAt time.Time) error
+	GetDeviceSessionByCodeFn      func(ctx context.Context, deviceCode string) (*model.DeviceSession, error)
+	GetDeviceSessionByUserCodeFn  func(ctx context.Context, userCode string) (*model.DeviceSession, error)
+	AuthorizeDeviceSessionFn      func(ctx context.Context, deviceCode, userID string) error
+	IncrementDeviceOTPAttemptsFn  func(ctx context.Context, deviceCode string) (int, error)
+	ResetDeviceOTPAndExtendFn     func(ctx context.Context, deviceCode string, expiresAt time.Time) error
+	DeleteDeviceSessionFn         func(ctx context.Context, deviceCode string) error
+	DeleteExpiredDeviceSessionsFn func(ctx context.Context) error
+	WithTxFn                      func(ctx context.Context, fn func(store.AuthStore) error) error
 }
 
 func (m *mockAuthStore) CreateMagicLink(ctx context.Context, email, tokenHash, deviceCode string, otpHash *string, expiresAt time.Time) (*model.MagicLink, error) {
@@ -72,6 +84,61 @@ func (m *mockAuthStore) InstallLibrary(ctx context.Context, userID, libraryID st
 	}
 	return nil
 }
+func (m *mockAuthStore) CreateDeviceSession(ctx context.Context, deviceCode, userCode, email string, expiresAt time.Time) error {
+	if m.CreateDeviceSessionFn != nil {
+		return m.CreateDeviceSessionFn(ctx, deviceCode, userCode, email, expiresAt)
+	}
+	return nil
+}
+func (m *mockAuthStore) GetDeviceSessionByCode(ctx context.Context, deviceCode string) (*model.DeviceSession, error) {
+	if m.GetDeviceSessionByCodeFn != nil {
+		return m.GetDeviceSessionByCodeFn(ctx, deviceCode)
+	}
+	return nil, store.ErrNotFound
+}
+func (m *mockAuthStore) GetDeviceSessionByUserCode(ctx context.Context, userCode string) (*model.DeviceSession, error) {
+	if m.GetDeviceSessionByUserCodeFn != nil {
+		return m.GetDeviceSessionByUserCodeFn(ctx, userCode)
+	}
+	return nil, store.ErrNotFound
+}
+func (m *mockAuthStore) AuthorizeDeviceSession(ctx context.Context, deviceCode, userID string) error {
+	if m.AuthorizeDeviceSessionFn != nil {
+		return m.AuthorizeDeviceSessionFn(ctx, deviceCode, userID)
+	}
+	return nil
+}
+func (m *mockAuthStore) IncrementDeviceOTPAttempts(ctx context.Context, deviceCode string) (int, error) {
+	if m.IncrementDeviceOTPAttemptsFn != nil {
+		return m.IncrementDeviceOTPAttemptsFn(ctx, deviceCode)
+	}
+	return 0, nil
+}
+func (m *mockAuthStore) ResetDeviceOTPAndExtend(ctx context.Context, deviceCode string, expiresAt time.Time) error {
+	if m.ResetDeviceOTPAndExtendFn != nil {
+		return m.ResetDeviceOTPAndExtendFn(ctx, deviceCode, expiresAt)
+	}
+	return nil
+}
+func (m *mockAuthStore) DeleteDeviceSession(ctx context.Context, deviceCode string) error {
+	if m.DeleteDeviceSessionFn != nil {
+		return m.DeleteDeviceSessionFn(ctx, deviceCode)
+	}
+	return nil
+}
+func (m *mockAuthStore) DeleteExpiredDeviceSessions(ctx context.Context) error {
+	if m.DeleteExpiredDeviceSessionsFn != nil {
+		return m.DeleteExpiredDeviceSessionsFn(ctx)
+	}
+	return nil
+}
+func (m *mockAuthStore) WithTx(ctx context.Context, fn func(store.AuthStore) error) error {
+	if m.WithTxFn != nil {
+		return m.WithTxFn(ctx, fn)
+	}
+	// Default: just call fn with self (no real transaction)
+	return fn(m)
+}
 
 func newTestAuthHandler(ms *mockAuthStore) *AuthHandler {
 	cfg := &config.Config{
@@ -83,19 +150,13 @@ func newTestAuthHandler(ms *mockAuthStore) *AuthHandler {
 
 func TestAuthHandler_StartDeviceFlow(t *testing.T) {
 	tests := []struct {
-		name       string
-		body       any
-		setupStore func(*mockAuthStore)
-		wantCode   int
-		wantEmail  bool
+		name        string
+		body        any
+		setupStore  func(*mockAuthStore)
+		wantCode    int
+		wantEmail   bool
+		wantErrCode string
 	}{
-		{
-			name:       "without email",
-			body:       nil,
-			setupStore: func(ms *mockAuthStore) {},
-			wantCode:   http.StatusOK,
-			wantEmail:  false,
-		},
 		{
 			name: "with valid email",
 			body: map[string]string{"email": "user@example.com"},
@@ -108,10 +169,25 @@ func TestAuthHandler_StartDeviceFlow(t *testing.T) {
 			wantEmail: true,
 		},
 		{
-			name:       "with invalid email",
-			body:       map[string]string{"email": "not-an-email"},
-			setupStore: func(ms *mockAuthStore) {},
-			wantCode:   http.StatusBadRequest,
+			name:        "missing email",
+			body:        nil,
+			setupStore:  func(ms *mockAuthStore) {},
+			wantCode:    http.StatusBadRequest,
+			wantErrCode: "INVALID_EMAIL",
+		},
+		{
+			name:        "empty email",
+			body:        map[string]string{"email": ""},
+			setupStore:  func(ms *mockAuthStore) {},
+			wantCode:    http.StatusBadRequest,
+			wantErrCode: "INVALID_EMAIL",
+		},
+		{
+			name:        "with invalid email",
+			body:        map[string]string{"email": "not-an-email"},
+			setupStore:  func(ms *mockAuthStore) {},
+			wantCode:    http.StatusBadRequest,
+			wantErrCode: "INVALID_EMAIL",
 		},
 	}
 
@@ -130,6 +206,14 @@ func TestAuthHandler_StartDeviceFlow(t *testing.T) {
 
 			if rec.Code != tt.wantCode {
 				t.Fatalf("got status %d, want %d (body=%s)", rec.Code, tt.wantCode, rec.Body.String())
+			}
+
+			if tt.wantErrCode != "" {
+				var resp errorResponse
+				decodeJSON(t, rec, &resp)
+				if resp.Error.Code != tt.wantErrCode {
+					t.Errorf("got error code %q, want %q", resp.Error.Code, tt.wantErrCode)
+				}
 			}
 
 			if tt.wantCode == http.StatusOK {
@@ -153,65 +237,81 @@ func TestAuthHandler_StartDeviceFlow(t *testing.T) {
 func TestAuthHandler_PollDeviceToken(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(h *AuthHandler) string // returns device_code
+		setupStore  func(ms *mockAuthStore)
+		deviceCode  string
 		wantCode    int
 		wantErrCode string
 		wantTokens  bool
 	}{
 		{
-			name: "authorization pending",
-			setup: func(h *AuthHandler) string {
-				dc := "test-device-code"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(15 * time.Minute),
+			name:       "authorization pending",
+			deviceCode: "test-device-code",
+			setupStore: func(ms *mockAuthStore) {
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, dc string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode: dc,
+						UserCode:   "ABCD-1234",
+						ExpiresAt:  time.Now().Add(15 * time.Minute),
+						Authorized: false,
+					}, nil
 				}
-				h.mu.Unlock()
-				return dc
 			},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "AUTHORIZATION_PENDING",
 		},
 		{
-			name: "expired device code",
-			setup: func(h *AuthHandler) string {
-				dc := "expired-code"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(-1 * time.Minute),
-				}
-				h.mu.Unlock()
-				return dc
+			name:       "expired device code",
+			deviceCode: "expired-code",
+			setupStore: func(ms *mockAuthStore) {
+				// GetDeviceSessionByCode returns ErrNotFound for expired sessions
+				// (the SQL query filters by expires_at > NOW())
 			},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "EXPIRED_TOKEN",
 		},
 		{
-			name: "invalid device code",
-			setup: func(h *AuthHandler) string {
-				return "nonexistent"
-			},
+			name:        "invalid device code",
+			deviceCode:  "nonexistent",
+			setupStore:  func(ms *mockAuthStore) {},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "EXPIRED_TOKEN",
 		},
 		{
-			name: "authorized - returns tokens",
-			setup: func(h *AuthHandler) string {
-				dc := "authorized-code"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:   "ABCD-1234",
-					ExpiresAt:  time.Now().Add(15 * time.Minute),
-					Authorized: true,
-					UserID:     "usr_alice",
+			name:       "authorized - returns tokens",
+			deviceCode: "authorized-code",
+			setupStore: func(ms *mockAuthStore) {
+				userID := "usr_alice"
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, dc string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode: dc,
+						UserCode:   "ABCD-1234",
+						ExpiresAt:  time.Now().Add(15 * time.Minute),
+						Authorized: true,
+						UserID:     &userID,
+					}, nil
 				}
-				h.mu.Unlock()
-				return dc
 			},
 			wantCode:   http.StatusOK,
 			wantTokens: true,
+		},
+		{
+			name:       "delete device session fails",
+			deviceCode: "delete-fail",
+			setupStore: func(ms *mockAuthStore) {
+				userID := "usr_alice"
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, dc string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode: dc,
+						Authorized: true,
+						UserID:     &userID,
+					}, nil
+				}
+				ms.DeleteDeviceSessionFn = func(context.Context, string) error {
+					return errors.New("db error")
+				}
+			},
+			wantCode:    http.StatusInternalServerError,
+			wantErrCode: "INTERNAL_ERROR",
 		},
 	}
 
@@ -226,13 +326,13 @@ func TestAuthHandler_PollDeviceToken(t *testing.T) {
 					return &model.User{ID: id, Email: "alice@example.com"}, nil
 				},
 			}
+			tt.setupStore(ms)
 			h := newTestAuthHandler(ms)
-			deviceCode := tt.setup(h)
 
 			r := chi.NewRouter()
 			r.Post("/auth/token", h.PollDeviceToken)
 
-			req := requestWithUser("POST", "/auth/token", map[string]string{"device_code": deviceCode}, "")
+			req := requestWithUser("POST", "/auth/token", map[string]string{"device_code": tt.deviceCode}, "")
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
@@ -263,22 +363,23 @@ func TestAuthHandler_PollDeviceToken(t *testing.T) {
 func TestAuthHandler_VerifyOTP(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(h *AuthHandler, ms *mockAuthStore) (deviceCode, otp string)
+		setup       func(ms *mockAuthStore) (deviceCode, otp string)
 		wantCode    int
 		wantErrCode string
 	}{
 		{
 			name: "success",
-			setup: func(h *AuthHandler, ms *mockAuthStore) (string, string) {
+			setup: func(ms *mockAuthStore) (string, string) {
 				dc := "otp-device"
 				otp := "123456"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(15 * time.Minute),
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, deviceCode string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode:  dc,
+						UserCode:    "ABCD-1234",
+						ExpiresAt:   time.Now().Add(15 * time.Minute),
+						OTPAttempts: 0,
+					}, nil
 				}
-				h.mu.Unlock()
-
 				ms.GetMagicLinkByOTPHashFn = func(context.Context, string) (*model.MagicLink, error) {
 					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: dc}, nil
 				}
@@ -292,15 +393,16 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 		},
 		{
 			name: "invalid OTP",
-			setup: func(h *AuthHandler, ms *mockAuthStore) (string, string) {
+			setup: func(ms *mockAuthStore) (string, string) {
 				dc := "otp-device-bad"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(15 * time.Minute),
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, deviceCode string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode:  dc,
+						UserCode:    "ABCD-1234",
+						ExpiresAt:   time.Now().Add(15 * time.Minute),
+						OTPAttempts: 0,
+					}, nil
 				}
-				h.mu.Unlock()
-
 				ms.GetMagicLinkByOTPHashFn = func(context.Context, string) (*model.MagicLink, error) {
 					return nil, store.ErrNotFound
 				}
@@ -311,14 +413,9 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 		},
 		{
 			name: "expired device code",
-			setup: func(h *AuthHandler, ms *mockAuthStore) (string, string) {
+			setup: func(ms *mockAuthStore) (string, string) {
 				dc := "expired-otp"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(-1 * time.Minute),
-				}
-				h.mu.Unlock()
+				// GetDeviceSessionByCode returns ErrNotFound for expired sessions
 				return dc, "123456"
 			},
 			wantCode:    http.StatusBadRequest,
@@ -326,15 +423,16 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 		},
 		{
 			name: "device code mismatch",
-			setup: func(h *AuthHandler, ms *mockAuthStore) (string, string) {
+			setup: func(ms *mockAuthStore) (string, string) {
 				dc := "mismatch-device"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(15 * time.Minute),
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, deviceCode string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode:  dc,
+						UserCode:    "ABCD-1234",
+						ExpiresAt:   time.Now().Add(15 * time.Minute),
+						OTPAttempts: 0,
+					}, nil
 				}
-				h.mu.Unlock()
-
 				ms.GetMagicLinkByOTPHashFn = func(context.Context, string) (*model.MagicLink, error) {
 					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: "other-device"}, nil
 				}
@@ -345,15 +443,16 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 		},
 		{
 			name: "creates new user when not found",
-			setup: func(h *AuthHandler, ms *mockAuthStore) (string, string) {
+			setup: func(ms *mockAuthStore) (string, string) {
 				dc := "new-user-device"
-				h.mu.Lock()
-				h.devices[dc] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(15 * time.Minute),
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, deviceCode string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode:  dc,
+						UserCode:    "ABCD-1234",
+						ExpiresAt:   time.Now().Add(15 * time.Minute),
+						OTPAttempts: 0,
+					}, nil
 				}
-				h.mu.Unlock()
-
 				ms.GetMagicLinkByOTPHashFn = func(context.Context, string) (*model.MagicLink, error) {
 					return &model.MagicLink{ID: "ml_1", Email: "new@example.com", DeviceCode: dc}, nil
 				}
@@ -368,13 +467,40 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 			},
 			wantCode: http.StatusOK,
 		},
+		{
+			name: "authorize device session fails",
+			setup: func(ms *mockAuthStore) (string, string) {
+				dc := "auth-fail-device"
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, deviceCode string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode:  dc,
+						UserCode:    "ABCD-1234",
+						ExpiresAt:   time.Now().Add(15 * time.Minute),
+						OTPAttempts: 0,
+					}, nil
+				}
+				ms.GetMagicLinkByOTPHashFn = func(context.Context, string) (*model.MagicLink, error) {
+					return &model.MagicLink{ID: "ml_1", Email: "user@example.com", DeviceCode: dc}, nil
+				}
+				ms.MarkMagicLinkUsedFn = func(context.Context, string) error { return nil }
+				ms.GetUserByEmailFn = func(_ context.Context, email string) (*model.User, error) {
+					return &model.User{ID: "usr_1", Email: email}, nil
+				}
+				ms.AuthorizeDeviceSessionFn = func(context.Context, string, string) error {
+					return errors.New("db error")
+				}
+				return dc, "123456"
+			},
+			wantCode:    http.StatusInternalServerError,
+			wantErrCode: "INTERNAL_ERROR",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ms := &mockAuthStore{}
+			deviceCode, otp := tt.setup(ms)
 			h := newTestAuthHandler(ms)
-			deviceCode, otp := tt.setup(h, ms)
 
 			r := chi.NewRouter()
 			r.Post("/auth/verify-otp", h.VerifyOTP)
@@ -399,20 +525,27 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 }
 
 func TestAuthHandler_VerifyOTP_BruteForceProtection(t *testing.T) {
+	attempts := 0
 	ms := &mockAuthStore{
+		GetDeviceSessionByCodeFn: func(_ context.Context, dc string) (*model.DeviceSession, error) {
+			return &model.DeviceSession{
+				DeviceCode:  dc,
+				UserCode:    "ABCD-1234",
+				ExpiresAt:   time.Now().Add(15 * time.Minute),
+				OTPAttempts: attempts,
+			}, nil
+		},
 		GetMagicLinkByOTPHashFn: func(context.Context, string) (*model.MagicLink, error) {
 			return nil, store.ErrNotFound
+		},
+		IncrementDeviceOTPAttemptsFn: func(_ context.Context, _ string) (int, error) {
+			attempts++
+			return attempts, nil
 		},
 	}
 	h := newTestAuthHandler(ms)
 
 	dc := "brute-force-device"
-	h.mu.Lock()
-	h.devices[dc] = &deviceSession{
-		UserCode:  "ABCD-1234",
-		ExpiresAt: time.Now().Add(15 * time.Minute),
-	}
-	h.mu.Unlock()
 
 	r := chi.NewRouter()
 	r.Post("/auth/verify-otp", h.VerifyOTP)
@@ -545,20 +678,21 @@ func TestAuthHandler_ResendVerification(t *testing.T) {
 	tests := []struct {
 		name        string
 		body        any
-		setup       func(h *AuthHandler, ms *mockAuthStore)
+		setup       func(ms *mockAuthStore)
 		wantCode    int
 		wantErrCode string
 	}{
 		{
 			name: "success",
 			body: map[string]string{"device_code": "resend-dc", "email": "user@example.com"},
-			setup: func(h *AuthHandler, ms *mockAuthStore) {
-				h.mu.Lock()
-				h.devices["resend-dc"] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(15 * time.Minute),
+			setup: func(ms *mockAuthStore) {
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, dc string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode: dc,
+						UserCode:   "ABCD-1234",
+						ExpiresAt:  time.Now().Add(15 * time.Minute),
+					}, nil
 				}
-				h.mu.Unlock()
 				ms.CreateMagicLinkFn = func(context.Context, string, string, string, *string, time.Time) (*model.MagicLink, error) {
 					return &model.MagicLink{ID: "ml_1"}, nil
 				}
@@ -568,31 +702,44 @@ func TestAuthHandler_ResendVerification(t *testing.T) {
 		{
 			name:        "missing fields",
 			body:        map[string]string{},
-			setup:       func(h *AuthHandler, ms *mockAuthStore) {},
+			setup:       func(ms *mockAuthStore) {},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "INVALID_REQUEST",
 		},
 		{
 			name: "expired device code",
 			body: map[string]string{"device_code": "expired-dc", "email": "user@example.com"},
-			setup: func(h *AuthHandler, ms *mockAuthStore) {
-				h.mu.Lock()
-				h.devices["expired-dc"] = &deviceSession{
-					UserCode:  "ABCD-1234",
-					ExpiresAt: time.Now().Add(-1 * time.Minute),
-				}
-				h.mu.Unlock()
+			setup: func(ms *mockAuthStore) {
+				// GetDeviceSessionByCode returns ErrNotFound for expired sessions
 			},
 			wantCode:    http.StatusBadRequest,
 			wantErrCode: "EXPIRED_TOKEN",
+		},
+		{
+			name: "reset OTP fails",
+			body: map[string]string{"device_code": "reset-fail-dc", "email": "user@example.com"},
+			setup: func(ms *mockAuthStore) {
+				ms.GetDeviceSessionByCodeFn = func(_ context.Context, dc string) (*model.DeviceSession, error) {
+					return &model.DeviceSession{
+						DeviceCode: dc,
+						UserCode:   "ABCD-1234",
+						ExpiresAt:  time.Now().Add(15 * time.Minute),
+					}, nil
+				}
+				ms.ResetDeviceOTPAndExtendFn = func(context.Context, string, time.Time) error {
+					return errors.New("db error")
+				}
+			},
+			wantCode:    http.StatusInternalServerError,
+			wantErrCode: "INTERNAL_ERROR",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ms := &mockAuthStore{}
+			tt.setup(ms)
 			h := newTestAuthHandler(ms)
-			tt.setup(h, ms)
 
 			r := chi.NewRouter()
 			r.Post("/auth/resend", h.ResendVerification)
@@ -618,15 +765,46 @@ func TestAuthHandler_ResendVerification(t *testing.T) {
 func TestAuthHandler_DeviceFlow_EndToEnd(t *testing.T) {
 	// Tests the full flow: StartDeviceFlow → VerifyOTP → PollDeviceToken
 	var capturedOTPHash string
+	var capturedDeviceCode string
+	authorized := false
+	var authorizedUserID *string
 
 	ms := &mockAuthStore{
+		CreateDeviceSessionFn: func(_ context.Context, deviceCode, userCode, email string, _ time.Time) error {
+			capturedDeviceCode = deviceCode
+			return nil
+		},
+		GetDeviceSessionByCodeFn: func(_ context.Context, dc string) (*model.DeviceSession, error) {
+			if dc != capturedDeviceCode {
+				return nil, store.ErrNotFound
+			}
+			return &model.DeviceSession{
+				DeviceCode:  dc,
+				UserCode:    "ABCD-1234",
+				ExpiresAt:   time.Now().Add(15 * time.Minute),
+				Authorized:  authorized,
+				UserID:      authorizedUserID,
+				OTPAttempts: 0,
+			}, nil
+		},
 		CreateMagicLinkFn: func(_ context.Context, _ string, _ string, _ string, otpHash *string, _ time.Time) (*model.MagicLink, error) {
 			if otpHash != nil {
 				capturedOTPHash = *otpHash
 			}
 			return &model.MagicLink{ID: "ml_1"}, nil
 		},
+		AuthorizeDeviceSessionFn: func(_ context.Context, _ string, userID string) error {
+			authorized = true
+			authorizedUserID = &userID
+			return nil
+		},
+		DeleteDeviceSessionFn: func(_ context.Context, dc string) error {
+			// After deletion, subsequent lookups should fail
+			capturedDeviceCode = ""
+			return nil
+		},
 	}
+
 	cfg := &config.Config{
 		JWTSecret: "test-secret",
 		BaseURL:   "http://localhost:8080",

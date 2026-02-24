@@ -36,9 +36,9 @@ func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, db: pool, q: dbgen.New(pool)}
 }
 
-// WithTx runs fn inside a transaction. If fn returns an error the transaction
+// withTx runs fn inside a transaction. If fn returns an error the transaction
 // is rolled back; otherwise it is committed.
-func (s *Store) WithTx(ctx context.Context, fn func(tx *Store) error) error {
+func (s *Store) withTx(ctx context.Context, fn func(tx *Store) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -55,6 +55,13 @@ func (s *Store) WithTx(ctx context.Context, fn func(tx *Store) error) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// WithTx runs fn inside a transaction, passing a transactional AuthStore.
+func (s *Store) WithTx(ctx context.Context, fn func(AuthStore) error) error {
+	return s.withTx(ctx, func(tx *Store) error {
+		return fn(tx)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +318,80 @@ func (s *Store) GetLatestHashByCommand(ctx context.Context, commandID string) (s
 }
 
 // ---------------------------------------------------------------------------
+// Device Sessions
+// ---------------------------------------------------------------------------
+
+func (s *Store) CreateDeviceSession(ctx context.Context, deviceCode, userCode, email string, expiresAt time.Time) error {
+	return s.q.CreateDeviceSession(ctx, dbgen.CreateDeviceSessionParams{
+		DeviceCode: deviceCode,
+		UserCode:   userCode,
+		Email:      email,
+		ExpiresAt:  timeToTs(expiresAt),
+	})
+}
+
+func (s *Store) GetDeviceSessionByCode(ctx context.Context, deviceCode string) (*model.DeviceSession, error) {
+	ds, err := s.q.GetDeviceSessionByCode(ctx, deviceCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get device session by code: %w", err)
+	}
+	m := toModelDeviceSession(ds)
+	return &m, nil
+}
+
+func (s *Store) GetDeviceSessionByUserCode(ctx context.Context, userCode string) (*model.DeviceSession, error) {
+	ds, err := s.q.GetDeviceSessionByUserCode(ctx, userCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get device session by user code: %w", err)
+	}
+	m := toModelDeviceSession(ds)
+	return &m, nil
+}
+
+func (s *Store) AuthorizeDeviceSession(ctx context.Context, deviceCode, userID string) error {
+	rows, err := s.q.AuthorizeDeviceSession(ctx, dbgen.AuthorizeDeviceSessionParams{
+		DeviceCode: deviceCode,
+		UserID:     &userID,
+	})
+	if err != nil {
+		return fmt.Errorf("authorize device session: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) IncrementDeviceOTPAttempts(ctx context.Context, deviceCode string) (int, error) {
+	attempts, err := s.q.IncrementDeviceOTPAttempts(ctx, deviceCode)
+	if err != nil {
+		return 0, fmt.Errorf("increment device otp attempts: %w", err)
+	}
+	return int(attempts), nil
+}
+
+func (s *Store) ResetDeviceOTPAndExtend(ctx context.Context, deviceCode string, expiresAt time.Time) error {
+	return s.q.ResetDeviceOTPAndExtend(ctx, dbgen.ResetDeviceOTPAndExtendParams{
+		DeviceCode: deviceCode,
+		ExpiresAt:  timeToTs(expiresAt),
+	})
+}
+
+func (s *Store) DeleteDeviceSession(ctx context.Context, deviceCode string) error {
+	return s.q.DeleteDeviceSession(ctx, deviceCode)
+}
+
+func (s *Store) DeleteExpiredDeviceSessions(ctx context.Context) error {
+	return s.q.DeleteExpiredDeviceSessions(ctx)
+}
+
+// ---------------------------------------------------------------------------
 // Magic Links
 // ---------------------------------------------------------------------------
 
@@ -512,7 +593,7 @@ func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID, slug, name, 
 // InstallLibrary records that a user has installed a library, atomically
 // incrementing the install count inside a transaction.
 func (s *Store) InstallLibrary(ctx context.Context, userID, libraryID string) error {
-	return s.WithTx(ctx, func(tx *Store) error {
+	return s.withTx(ctx, func(tx *Store) error {
 		if err := tx.q.InstallLibrary(ctx, dbgen.InstallLibraryParams{
 			UserID:    userID,
 			LibraryID: libraryID,
@@ -529,7 +610,7 @@ func (s *Store) InstallLibrary(ctx context.Context, userID, libraryID string) er
 // UninstallLibrary removes a user's installation and atomically decrements
 // the install count inside a transaction.
 func (s *Store) UninstallLibrary(ctx context.Context, userID, libraryID string) error {
-	return s.WithTx(ctx, func(tx *Store) error {
+	return s.withTx(ctx, func(tx *Store) error {
 		rows, err := tx.q.UninstallLibrary(ctx, dbgen.UninstallLibraryParams{
 			UserID:    userID,
 			LibraryID: libraryID,

@@ -9,9 +9,11 @@ import (
 )
 
 type Querier interface {
+	AuthorizeDeviceSession(ctx context.Context, arg AuthorizeDeviceSessionParams) (int64, error)
 	CountCommandsByOwner(ctx context.Context, ownerUserID string) (int64, error)
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (Command, error)
 	CreateCommandForLibrary(ctx context.Context, arg CreateCommandForLibraryParams) (Command, error)
+	CreateDeviceSession(ctx context.Context, arg CreateDeviceSessionParams) error
 	CreateLibraryRelease(ctx context.Context, arg CreateLibraryReleaseParams) (LibraryRelease, error)
 	CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams) (MagicLink, error)
 	CreateOrUpdateLibrary(ctx context.Context, arg CreateOrUpdateLibraryParams) (Library, error)
@@ -19,9 +21,13 @@ type Querier interface {
 	CreateUser(ctx context.Context, btrim string) (User, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (CommandVersion, error)
 	DecrementInstallCount(ctx context.Context, id string) error
+	DeleteDeviceSession(ctx context.Context, deviceCode string) error
+	DeleteExpiredDeviceSessions(ctx context.Context) error
 	GetCommandByID(ctx context.Context, id string) (Command, error)
 	GetCommandByLibraryAndSlug(ctx context.Context, arg GetCommandByLibraryAndSlugParams) (Command, error)
 	GetCommandByOwnerAndSlug(ctx context.Context, arg GetCommandByOwnerAndSlugParams) (Command, error)
+	GetDeviceSessionByCode(ctx context.Context, deviceCode string) (DeviceSession, error)
+	GetDeviceSessionByUserCode(ctx context.Context, userCode string) (DeviceSession, error)
 	GetInstalledLibraries(ctx context.Context, userID string) ([]Library, error)
 	GetLatestHashByCommand(ctx context.Context, commandID string) (string, error)
 	GetLatestVersionByCommand(ctx context.Context, commandID string) (CommandVersion, error)
@@ -37,6 +43,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, lower string) (User, error)
 	GetVersionByCommandAndVersion(ctx context.Context, arg GetVersionByCommandAndVersionParams) (CommandVersion, error)
+	IncrementDeviceOTPAttempts(ctx context.Context, deviceCode string) (int32, error)
 	IncrementInstallCount(ctx context.Context, id string) error
 	InstallLibrary(ctx context.Context, arg InstallLibraryParams) error
 	IsLibraryInstalled(ctx context.Context, arg IsLibraryInstalledParams) (bool, error)
@@ -48,6 +55,7 @@ type Querier interface {
 	ListSessionsByUser(ctx context.Context, userID string) ([]Session, error)
 	ListVersionsByCommand(ctx context.Context, commandID string) ([]CommandVersion, error)
 	MarkMagicLinkUsed(ctx context.Context, id string) (int64, error)
+	ResetDeviceOTPAndExtend(ctx context.Context, arg ResetDeviceOTPAndExtendParams) error
 	RevokeAllSessionsExcept(ctx context.Context, arg RevokeAllSessionsExceptParams) (int64, error)
 	RevokeSession(ctx context.Context, id string) (int64, error)
 	SetUsername(ctx context.Context, arg SetUsernameParams) (int64, error)
