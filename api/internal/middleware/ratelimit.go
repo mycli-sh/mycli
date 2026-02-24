@@ -16,6 +16,7 @@ type RateLimiter struct {
 	buckets  map[string]*bucket
 	rate     float64
 	capacity float64
+	calls    int
 }
 
 func NewRateLimiter(rate float64, capacity float64) *RateLimiter {
@@ -31,6 +32,18 @@ func (rl *RateLimiter) Allow(key string) bool {
 	defer rl.mu.Unlock()
 
 	now := time.Now()
+
+	// Periodic eviction of stale buckets
+	rl.calls++
+	if rl.calls%1000 == 0 {
+		cutoff := now.Add(-10 * time.Minute)
+		for k, b := range rl.buckets {
+			if b.lastCheck.Before(cutoff) {
+				delete(rl.buckets, k)
+			}
+		}
+	}
+
 	b, exists := rl.buckets[key]
 	if !exists {
 		rl.buckets[key] = &bucket{tokens: rl.capacity - 1, lastCheck: now}

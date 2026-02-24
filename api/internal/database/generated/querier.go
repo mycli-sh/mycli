@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	AuthorizeMagicLinkByDeviceCode(ctx context.Context, arg AuthorizeMagicLinkByDeviceCodeParams) (int64, error)
 	CountCommandsByOwner(ctx context.Context, ownerUserID string) (int64, error)
+	CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int32, error)
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (Command, error)
 	CreateCommandForLibrary(ctx context.Context, arg CreateCommandForLibraryParams) (Command, error)
 	CreateLibraryRelease(ctx context.Context, arg CreateLibraryReleaseParams) (LibraryRelease, error)
@@ -62,6 +63,7 @@ type Querier interface {
 	UpdateCommandMeta(ctx context.Context, arg UpdateCommandMetaParams) error
 	UpdateLibraryLatestVersion(ctx context.Context, arg UpdateLibraryLatestVersionParams) error
 	UpdateSessionLastUsed(ctx context.Context, id string) error
+	UpdateSessionRefreshTokenHash(ctx context.Context, arg UpdateSessionRefreshTokenHashParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -37,6 +37,8 @@ type mockAuthStore struct {
 	RevokeSessionFn                  func(ctx context.Context, id string) error
 	GetSessionByTokenHashFn          func(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsedFn          func(ctx context.Context, id string) error
+	UpdateSessionRefreshTokenHashFn  func(ctx context.Context, id, newHash string) error
+	CountOTPAttemptsByDeviceCodeFn   func(ctx context.Context, deviceCode string) (int, error)
 	GetLibraryBySlugFn               func(ctx context.Context, slug string) (*model.Library, error)
 	InstallLibraryFn                 func(ctx context.Context, userID, libraryID string) error
 }
@@ -119,6 +121,18 @@ func (m *mockAuthStore) GetSessionByTokenHash(ctx context.Context, tokenHash str
 }
 func (m *mockAuthStore) UpdateSessionLastUsed(ctx context.Context, id string) error {
 	return m.UpdateSessionLastUsedFn(ctx, id)
+}
+func (m *mockAuthStore) UpdateSessionRefreshTokenHash(ctx context.Context, id, newHash string) error {
+	if m.UpdateSessionRefreshTokenHashFn != nil {
+		return m.UpdateSessionRefreshTokenHashFn(ctx, id, newHash)
+	}
+	return nil
+}
+func (m *mockAuthStore) CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int, error) {
+	if m.CountOTPAttemptsByDeviceCodeFn != nil {
+		return m.CountOTPAttemptsByDeviceCodeFn(ctx, deviceCode)
+	}
+	return 0, nil
 }
 func (m *mockAuthStore) GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error) {
 	if m.GetLibraryBySlugFn != nil {
@@ -529,6 +543,9 @@ func TestAuthHandler_VerifyOTP_BruteForceProtection(t *testing.T) {
 			attempts++
 			return attempts, nil
 		},
+		CountOTPAttemptsByDeviceCodeFn: func(_ context.Context, _ string) (int, error) {
+			return attempts, nil
+		},
 	}
 	h := newTestAuthHandler(ms)
 
@@ -587,7 +604,7 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 			},
 			setupStore: func(ms *mockAuthStore) {
 				ms.GetSessionByTokenHashFn = func(context.Context, string) (*model.Session, error) {
-					return &model.Session{ID: "ses_1", UserID: "usr_alice", LastUsedAt: now, ExpiresAt: now, CreatedAt: now}, nil
+					return &model.Session{ID: "ses_1", UserID: "usr_alice", LastUsedAt: now, ExpiresAt: now.Add(30 * 24 * time.Hour), CreatedAt: now}, nil
 				}
 				ms.UpdateSessionLastUsedFn = func(context.Context, string) error { return nil }
 			},
@@ -624,7 +641,7 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 					return &model.Session{
 						ID: "ses_1", UserID: "usr_alice",
 						RevokedAt:  &revokedAt,
-						LastUsedAt: now, ExpiresAt: now, CreatedAt: now,
+						LastUsedAt: now, ExpiresAt: now.Add(30 * 24 * time.Hour), CreatedAt: now,
 					}, nil
 				}
 			},

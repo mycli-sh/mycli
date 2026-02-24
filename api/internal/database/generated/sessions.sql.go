@@ -72,7 +72,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
 SELECT id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at
 FROM sessions
-WHERE refresh_token_hash = $1
+WHERE refresh_token_hash = $1 AND expires_at > NOW()
 `
 
 type GetSessionByTokenHashRow struct {
@@ -212,5 +212,19 @@ UPDATE sessions SET last_used_at = now() WHERE id = $1
 
 func (q *Queries) UpdateSessionLastUsed(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, updateSessionLastUsed, id)
+	return err
+}
+
+const updateSessionRefreshTokenHash = `-- name: UpdateSessionRefreshTokenHash :exec
+UPDATE sessions SET refresh_token_hash = $2 WHERE id = $1
+`
+
+type UpdateSessionRefreshTokenHashParams struct {
+	ID               string `json:"id"`
+	RefreshTokenHash string `json:"refresh_token_hash"`
+}
+
+func (q *Queries) UpdateSessionRefreshTokenHash(ctx context.Context, arg UpdateSessionRefreshTokenHashParams) error {
+	_, err := q.db.Exec(ctx, updateSessionRefreshTokenHash, arg.ID, arg.RefreshTokenHash)
 	return err
 }

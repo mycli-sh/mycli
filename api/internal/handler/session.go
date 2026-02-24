@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -88,6 +89,12 @@ func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Info("auth.session.revoked",
+		"user_id", userID,
+		"session_id", sessionID,
+		"by", "self",
+	)
+
 	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
@@ -106,6 +113,12 @@ func (h *SessionHandler) RevokeAll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to revoke sessions")
 		return
 	}
+
+	slog.Info("auth.session.revoked",
+		"user_id", userID,
+		"by", "self",
+		"count", count,
+	)
 
 	writeJSON(w, http.StatusOK, map[string]any{"revoked_count": count})
 }

@@ -132,6 +132,9 @@ func (c *Client) tryRefresh() bool {
 
 	tokens.AccessToken = refreshResp.AccessToken
 	tokens.ExpiresAt = time.Now().Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	if refreshResp.RefreshToken != "" {
+		tokens.RefreshToken = refreshResp.RefreshToken
+	}
 	_ = auth.SaveTokens(tokens)
 	return true
 }

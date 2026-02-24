@@ -5,7 +5,7 @@ RETURNING id, email, token_hash, device_code, otp_hash, expires_at, used_at, cre
 
 -- name: GetMagicLinkByTokenHash :one
 SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
-FROM magic_links WHERE token_hash = $1;
+FROM magic_links WHERE token_hash = $1 AND expires_at > NOW() AND used_at IS NULL;
 
 -- name: GetMagicLinkByOTPHash :one
 SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
@@ -31,6 +31,9 @@ RETURNING otp_attempts;
 
 -- name: DeleteMagicLinksByDeviceCode :exec
 DELETE FROM magic_links WHERE device_code = $1;
+
+-- name: CountOTPAttemptsByDeviceCode :one
+SELECT COALESCE(SUM(otp_attempts), 0)::int AS total FROM magic_links WHERE device_code = $1;
 
 -- name: DeleteExpiredMagicLinks :exec
 DELETE FROM magic_links WHERE expires_at < NOW();

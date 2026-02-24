@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -75,9 +77,14 @@ func (h *AuthHandler) StartDeviceFlow(w http.ResponseWriter, r *http.Request) {
 		emailSent = false
 	}
 
+	slog.Info("auth.device_flow.start",
+		"email", redactEmail(req.Email),
+		"ip", r.RemoteAddr,
+	)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"device_code": deviceCode,
-		"expires_in":  900,
+		"expires_in":  authservice.AccessTokenTTL,
 		"interval":    5,
 		"email_sent":  emailSent,
 	})
@@ -105,28 +112,17 @@ func (h *AuthHandler) PollDeviceToken(w http.ResponseWriter, r *http.Request) {
 	userID := *ml.UserID
 
 	// Generate tokens (pure functions, no DB)
-	accessToken, err := authservice.GenerateJWTToken(h.cfg.JWTSecret, userID, "access", time.Hour)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "TOKEN_ERROR", "failed to generate token")
-		return
-	}
-	refreshToken, err := authservice.GenerateJWTToken(h.cfg.JWTSecret, userID, "refresh", 30*24*time.Hour)
+	accessToken, refreshToken, err := h.auth.GenerateTokenPair(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "TOKEN_ERROR", "failed to generate token")
 		return
 	}
 
+	meta := authservice.ExtractRequestMeta(r)
 	refreshTokenHash := authservice.HashToken(refreshToken)
-	userAgent := r.UserAgent()
-	ipAddress := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
-	}
-	deviceID := r.Header.Get("X-Device-ID")
-	deviceName := r.Header.Get("X-Device-Name")
 
 	// Atomically consume magic links + revoke old device session + create new session
-	sess, err := h.store.ConsumeAuthorizedDeviceCode(ctx, req.DeviceCode, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, time.Now().Add(30*24*time.Hour))
+	sess, err := h.store.ConsumeAuthorizedDeviceCode(ctx, req.DeviceCode, userID, refreshTokenHash, meta.UserAgent, meta.IPAddress, meta.DeviceID, meta.DeviceName, time.Now().Add(authservice.RefreshTokenDuration))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to consume device session")
 		return
@@ -138,10 +134,16 @@ func (h *AuthHandler) PollDeviceToken(w http.ResponseWriter, r *http.Request) {
 		needsUsername = user.Username == nil
 	}
 
+	slog.Info("auth.login.success",
+		"user_id", userID,
+		"device_id", meta.DeviceID,
+		"ip", meta.IPAddress,
+	)
+
 	resp := map[string]any{
 		"access_token":   accessToken,
 		"refresh_token":  refreshToken,
-		"expires_in":     3600,
+		"expires_in":     authservice.AccessTokenTTL,
 		"needs_username": needsUsername,
 	}
 	if sess != nil {
@@ -200,17 +202,30 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusUnauthorized, "SESSION_REVOKED", "session has been revoked")
 		return
 	}
+	if time.Now().After(sess.ExpiresAt) {
+		writeError(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session has expired")
+		return
+	}
 	_ = h.store.UpdateSessionLastUsed(r.Context(), sess.ID)
 
-	accessToken, err := authservice.GenerateJWTToken(h.cfg.JWTSecret, sub, "access", time.Hour)
+	accessToken, newRefreshToken, err := h.auth.GenerateTokenPair(sub)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "TOKEN_ERROR", "failed to generate token")
 		return
 	}
+	newRefreshTokenHash := authservice.HashToken(newRefreshToken)
+	_ = h.store.UpdateSessionRefreshTokenHash(r.Context(), sess.ID, newRefreshTokenHash)
+
+	slog.Info("auth.refresh",
+		"user_id", sub,
+		"session_id", sess.ID,
+	)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token": accessToken,
-		"expires_in":   3600,
+		"access_token":       accessToken,
+		"expires_in":         authservice.AccessTokenTTL,
+		"refresh_token":      newRefreshToken,
+		"refresh_expires_in": authservice.RefreshTokenTTL,
 	})
 }
 
@@ -286,8 +301,12 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Brute-force protection: max 5 OTP attempts
-	if latestML.OTPAttempts >= 5 {
+	// Brute-force protection: check aggregate attempts across all magic links for this device code
+	if h.otpRateLimited(ctx, req.DeviceCode, latestML.OTPAttempts) {
+		slog.Warn("auth.otp.max_attempts",
+			"device_code", req.DeviceCode,
+			"ip", r.RemoteAddr,
+		)
 		writeError(w, http.StatusTooManyRequests, "TOO_MANY_ATTEMPTS", "too many verification attempts")
 		return
 	}
@@ -296,14 +315,24 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	otpHash := authservice.HashToken(req.Code)
 	ml, err := h.store.GetMagicLinkByOTPHash(ctx, otpHash)
 	if err != nil {
-		_, _ = h.store.IncrementMagicLinkOTPAttempts(ctx, latestML.ID)
+		cnt, _ := h.store.IncrementMagicLinkOTPAttempts(ctx, latestML.ID)
+		slog.Warn("auth.otp.failed",
+			"device_code", req.DeviceCode,
+			"attempt", cnt,
+			"ip", r.RemoteAddr,
+		)
 		writeError(w, http.StatusBadRequest, "INVALID_CODE", "invalid or expired code")
 		return
 	}
 
 	// Verify the magic link belongs to this device code
 	if ml.DeviceCode != req.DeviceCode {
-		_, _ = h.store.IncrementMagicLinkOTPAttempts(ctx, latestML.ID)
+		cnt, _ := h.store.IncrementMagicLinkOTPAttempts(ctx, latestML.ID)
+		slog.Warn("auth.otp.failed",
+			"device_code", req.DeviceCode,
+			"attempt", cnt,
+			"ip", r.RemoteAddr,
+		)
 		writeError(w, http.StatusBadRequest, "INVALID_CODE", "invalid or expired code")
 		return
 	}
@@ -359,7 +388,13 @@ func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Generate new magic link + OTP (new link starts with otp_attempts=0)
+	// Check aggregate OTP attempts across all magic links for this device code
+	if h.otpRateLimited(ctx, req.DeviceCode, 0) {
+		writeError(w, http.StatusTooManyRequests, "TOO_MANY_ATTEMPTS", "too many verification attempts")
+		return
+	}
+
+	// Generate new magic link + OTP
 	magicToken := authservice.GenerateCode(32)
 	tokenHash := authservice.HashToken(magicToken)
 	otp := authservice.GenerateOTP()
@@ -383,7 +418,7 @@ func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"sent":       true,
-		"expires_in": 900,
+		"expires_in": authservice.AccessTokenTTL,
 	})
 }
 
@@ -483,7 +518,7 @@ func (h *AuthHandler) WebVerify(w http.ResponseWriter, r *http.Request) {
 		"access_token":   result.AccessToken,
 		"refresh_token":  result.RefreshToken,
 		"session_id":     result.SessionID,
-		"expires_in":     3600,
+		"expires_in":     authservice.AccessTokenTTL,
 		"needs_username": result.NeedsUsername,
 	})
 }
@@ -498,10 +533,10 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	deviceID := r.Header.Get("X-Device-ID")
+	meta := authservice.ExtractRequestMeta(r)
 
-	if deviceID != "" {
-		_ = h.store.RevokeSessionByDeviceID(ctx, userID, deviceID)
+	if meta.DeviceID != "" {
+		_ = h.store.RevokeSessionByDeviceID(ctx, userID, meta.DeviceID)
 	}
 
 	// Also accept refresh_token in body as fallback
@@ -515,7 +550,31 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	slog.Info("auth.logout",
+		"user_id", userID,
+		"device_id", meta.DeviceID,
+	)
+
 	writeJSON(w, http.StatusOK, map[string]any{"logged_out": true})
+}
+
+const maxOTPAttempts = 5
+
+func (h *AuthHandler) otpRateLimited(ctx context.Context, deviceCode string, fallback int) bool {
+	total, err := h.store.CountOTPAttemptsByDeviceCode(ctx, deviceCode)
+	if err != nil {
+		total = fallback
+	}
+	return total >= maxOTPAttempts
+}
+
+// redactEmail returns "f***@example.com" style redaction for logging.
+func redactEmail(email string) string {
+	at := strings.LastIndex(email, "@")
+	if at < 1 {
+		return "***"
+	}
+	return email[:1] + "***" + email[at:]
 }
 
 var verifiedTmpl = template.Must(template.New("verified").Parse(verifiedHTML))

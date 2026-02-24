@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,6 +26,13 @@ type Store interface {
 	CreateSession(ctx context.Context, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	RevokeSessionByDeviceID(ctx context.Context, userID, deviceID string) error
 }
+
+const (
+	AccessTokenDuration  = 15 * time.Minute
+	RefreshTokenDuration = 30 * 24 * time.Hour
+	AccessTokenTTL       = 900            // seconds, matches AccessTokenDuration
+	RefreshTokenTTL      = 30 * 24 * 3600 // seconds, matches RefreshTokenDuration
+)
 
 // Service centralises auth business logic shared across handlers.
 type Service struct {
@@ -58,36 +66,25 @@ func (s *Service) FindOrCreateUser(ctx context.Context, email string) (*model.Us
 	return user, nil
 }
 
-// IssueTokens generates JWT tokens (access 1h + refresh 30d), revokes any
+// IssueTokens generates JWT tokens (access 15m + refresh 30d), revokes any
 // existing session for the same device, creates a new session, and checks
 // whether the user still needs to set a username.
 func (s *Service) IssueTokens(ctx context.Context, userID string, r *http.Request) (*TokenResult, error) {
-	accessToken, err := GenerateJWTToken(s.jwtSecret, userID, "access", time.Hour)
+	accessToken, refreshToken, err := s.GenerateTokenPair(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := GenerateJWTToken(s.jwtSecret, userID, "refresh", 30*24*time.Hour)
-	if err != nil {
-		return nil, err
-	}
-
+	meta := ExtractRequestMeta(r)
 	refreshTokenHash := HashToken(refreshToken)
-	userAgent := r.UserAgent()
-	ipAddress := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
-	}
-	deviceID := r.Header.Get("X-Device-ID")
-	deviceName := r.Header.Get("X-Device-Name")
 
 	// Revoke any existing session for this device before creating a new one
-	if deviceID != "" {
-		_ = s.store.RevokeSessionByDeviceID(ctx, userID, deviceID)
+	if meta.DeviceID != "" {
+		_ = s.store.RevokeSessionByDeviceID(ctx, userID, meta.DeviceID)
 	}
 
 	var sessionID string
-	if sess, err := s.store.CreateSession(ctx, userID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName, time.Now().Add(30*24*time.Hour)); err == nil {
+	if sess, err := s.store.CreateSession(ctx, userID, refreshTokenHash, meta.UserAgent, meta.IPAddress, meta.DeviceID, meta.DeviceName, time.Now().Add(RefreshTokenDuration)); err == nil {
 		sessionID = sess.ID
 	}
 
@@ -102,6 +99,46 @@ func (s *Service) IssueTokens(ctx context.Context, userID string, r *http.Reques
 		SessionID:     sessionID,
 		NeedsUsername: needsUsername,
 	}, nil
+}
+
+// GenerateTokenPair creates a matched access + refresh JWT pair for the given user.
+func (s *Service) GenerateTokenPair(userID string) (accessToken, refreshToken string, err error) {
+	accessToken, err = GenerateJWTToken(s.jwtSecret, userID, "access", AccessTokenDuration)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err = GenerateJWTToken(s.jwtSecret, userID, "refresh", RefreshTokenDuration)
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, refreshToken, nil
+}
+
+// RequestMeta holds request metadata extracted from HTTP headers.
+type RequestMeta struct {
+	UserAgent  string
+	IPAddress  string
+	DeviceID   string
+	DeviceName string
+}
+
+// ExtractRequestMeta extracts common request metadata (IP, device ID, user agent, device name)
+// from an HTTP request.
+func ExtractRequestMeta(r *http.Request) RequestMeta {
+	ipAddress := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ipAddress = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
+	}
+	deviceID := r.Header.Get("X-Device-ID")
+	if !ValidDeviceID(deviceID) {
+		deviceID = ""
+	}
+	return RequestMeta{
+		UserAgent:  r.UserAgent(),
+		IPAddress:  ipAddress,
+		DeviceID:   deviceID,
+		DeviceName: r.Header.Get("X-Device-Name"),
+	}
 }
 
 // --- Utility functions (moved from handler package) ---
@@ -140,6 +177,12 @@ func GenerateOTP() string {
 func HashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
+}
+
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func ValidDeviceID(id string) bool {
+	return uuidRe.MatchString(id)
 }
 
 // ValidEmail performs a basic email validation check.

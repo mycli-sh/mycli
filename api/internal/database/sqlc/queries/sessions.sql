@@ -12,7 +12,7 @@ ORDER BY last_used_at DESC;
 -- name: GetSessionByTokenHash :one
 SELECT id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at
 FROM sessions
-WHERE refresh_token_hash = $1;
+WHERE refresh_token_hash = $1 AND expires_at > NOW();
 
 -- name: RevokeSession :execrows
 UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL;
@@ -27,3 +27,6 @@ WHERE user_id = $1 AND device_id = $2 AND device_id != '' AND revoked_at IS NULL
 
 -- name: UpdateSessionLastUsed :exec
 UPDATE sessions SET last_used_at = now() WHERE id = $1;
+
+-- name: UpdateSessionRefreshTokenHash :exec
+UPDATE sessions SET refresh_token_hash = $2 WHERE id = $1;

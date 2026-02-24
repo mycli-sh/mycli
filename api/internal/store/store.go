@@ -524,6 +524,24 @@ func (s *Store) UpdateSessionLastUsed(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id, newHash string) error {
+	if err := s.q.UpdateSessionRefreshTokenHash(ctx, dbgen.UpdateSessionRefreshTokenHashParams{
+		ID:               id,
+		RefreshTokenHash: newHash,
+	}); err != nil {
+		return fmt.Errorf("update session refresh token hash: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int, error) {
+	total, err := s.q.CountOTPAttemptsByDeviceCode(ctx, deviceCode)
+	if err != nil {
+		return 0, fmt.Errorf("count otp attempts by device code: %w", err)
+	}
+	return int(total), nil
+}
+
 // ---------------------------------------------------------------------------
 // Libraries
 // ---------------------------------------------------------------------------

@@ -29,6 +29,17 @@ func (q *Queries) AuthorizeMagicLinkByDeviceCode(ctx context.Context, arg Author
 	return result.RowsAffected(), nil
 }
 
+const countOTPAttemptsByDeviceCode = `-- name: CountOTPAttemptsByDeviceCode :one
+SELECT COALESCE(SUM(otp_attempts), 0)::int AS total FROM magic_links WHERE device_code = $1
+`
+
+func (q *Queries) CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int32, error) {
+	row := q.db.QueryRow(ctx, countOTPAttemptsByDeviceCode, deviceCode)
+	var total int32
+	err := row.Scan(&total)
+	return total, err
+}
+
 const createMagicLink = `-- name: CreateMagicLink :one
 INSERT INTO magic_links (email, token_hash, device_code, otp_hash, expires_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -138,7 +149,7 @@ func (q *Queries) GetMagicLinkByOTPHash(ctx context.Context, otpHash *string) (M
 
 const getMagicLinkByTokenHash = `-- name: GetMagicLinkByTokenHash :one
 SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
-FROM magic_links WHERE token_hash = $1
+FROM magic_links WHERE token_hash = $1 AND expires_at > NOW() AND used_at IS NULL
 `
 
 func (q *Queries) GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (MagicLink, error) {
