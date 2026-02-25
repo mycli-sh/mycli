@@ -1,28 +1,31 @@
 ---
-title: my library remove
-description: Remove an installed library.
+title: my library uninstall
+description: Remove a registry-installed library.
 ---
 
 ```bash
-my library remove <name>
+my library uninstall <name>
 ```
 
-Removes a library from the registry and deletes the cloned repository.
+Removes a library that was installed from the registry.
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `name` | Name of the library to remove (required) |
+| `name` | Name of the library to uninstall (required) |
 
 ## Examples
 
 ```bash
-my library remove my-library
+my library uninstall kubernetes
 ```
 
 ## Behavior
 
-- Removes the library entry from `~/.my/libraries/libraries.json`
-- Deletes the cloned repository from `~/.my/libraries/repos/`
+- Removes the library and its commands from the local installation
 - Library commands are no longer available
+
+:::note
+To remove a git-backed source, use [`my source remove`](/reference/source/remove/) instead.
+:::

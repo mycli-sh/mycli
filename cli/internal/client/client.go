@@ -19,6 +19,7 @@ var Version = "dev"
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	refreshing bool // guards against recursive refresh
 }
 
 func New(baseURL string) *Client {
@@ -48,55 +49,73 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
-func (c *Client) do(method, path string, body any, out any) error {
-	return c.doWithRetry(method, path, body, out, false)
+// execWithAuth performs an HTTP request with automatic auth header injection and
+// transparent 401 retry via token refresh. Returns the response (body already closed),
+// the response body bytes, and any error.
+func (c *Client) execWithAuth(buildReq func() (*http.Request, error)) (*http.Response, []byte, error) {
+	return c.execWithAuthRetry(buildReq, false)
 }
 
-func (c *Client) doWithRetry(method, path string, body any, out any, isRetry bool) error {
-	var bodyData []byte
-	if body != nil {
-		var err error
-		bodyData, err = json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
-		}
-	}
-
-	var bodyReader io.Reader
-	if bodyData != nil {
-		bodyReader = bytes.NewReader(bodyData)
-	}
-
-	req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
+func (c *Client) execWithAuthRetry(buildReq func() (*http.Request, error), isRetry bool) (*http.Response, []byte, error) {
+	req, err := buildReq()
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	setCommonHeaders(req)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		return nil, nil, err
 	}
 
-	// Inject auth header if tokens available
 	if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return nil, nil, fmt.Errorf("read response: %w", err)
 	}
 
-	// On 401, attempt transparent token refresh (once)
-	if resp.StatusCode == http.StatusUnauthorized && !isRetry {
+	// On 401, attempt transparent token refresh (once, non-reentrant)
+	if resp.StatusCode == http.StatusUnauthorized && !isRetry && !c.refreshing {
 		if c.tryRefresh() {
-			return c.doWithRetry(method, path, body, out, true)
+			return c.execWithAuthRetry(buildReq, true)
 		}
+		// Refresh failed — tokens are invalid, clear them so user can re-login
+		_ = auth.ClearTokens()
+	}
+
+	return resp, body, nil
+}
+
+func (c *Client) do(method, path string, reqBody any, out any) error {
+	var bodyData []byte
+	if reqBody != nil {
+		var err error
+		bodyData, err = json.Marshal(reqBody)
+		if err != nil {
+			return fmt.Errorf("marshal request: %w", err)
+		}
+	}
+
+	resp, respBody, err := c.execWithAuth(func() (*http.Request, error) {
+		var bodyReader io.Reader
+		if bodyData != nil {
+			bodyReader = bytes.NewReader(bodyData)
+		}
+		req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		setCommonHeaders(req)
+		if reqBody != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, nil
+	})
+	if err != nil {
+		return err
 	}
 
 	if resp.StatusCode >= 400 {
@@ -120,6 +139,9 @@ func (c *Client) doWithRetry(method, path string, body any, out any, isRetry boo
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // Returns true if the refresh succeeded and tokens were updated.
 func (c *Client) tryRefresh() bool {
+	c.refreshing = true
+	defer func() { c.refreshing = false }()
+
 	tokens, err := auth.LoadTokens()
 	if err != nil || tokens.RefreshToken == "" {
 		return false
@@ -368,33 +390,24 @@ type CatalogResponse struct {
 }
 
 func (c *Client) GetCatalog(etag string) (*CatalogResponse, error) {
-	req, err := http.NewRequest("GET", c.baseURL+"/v1/catalog", nil)
+	resp, body, err := c.execWithAuth(func() (*http.Request, error) {
+		req, err := http.NewRequest("GET", c.baseURL+"/v1/catalog", nil)
+		if err != nil {
+			return nil, err
+		}
+		setCommonHeaders(req)
+		if etag != "" {
+			req.Header.Set("If-None-Match", etag)
+		}
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	setCommonHeaders(req)
-	if etag != "" {
-		req.Header.Set("If-None-Match", etag)
-	}
-	if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified {
-		return nil, nil // no changes
+		return nil, nil
 	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}

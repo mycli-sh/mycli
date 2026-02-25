@@ -1,4 +1,4 @@
-package shelf
+package library
 
 import (
 	"fmt"
@@ -7,13 +7,13 @@ import (
 	"mycli.sh/pkg/spec"
 )
 
-// LibraryCatalog groups shelf catalog items with library-level aliases.
+// LibraryCatalog groups catalog items with library-level aliases.
 type LibraryCatalog struct {
-	Items   []ShelfCatalogItem
+	Items   []CatalogItem
 	Aliases []string
 }
 
-// GetAllLibraries iterates all shelves and returns catalog items grouped by library slug.
+// GetAllLibraries iterates all installed sources and returns catalog items grouped by library slug.
 func GetAllLibraries() (map[string]LibraryCatalog, error) {
 	reg, err := LoadRegistry()
 	if err != nil {
@@ -21,27 +21,25 @@ func GetAllLibraries() (map[string]LibraryCatalog, error) {
 	}
 
 	result := make(map[string]LibraryCatalog)
-	for _, entry := range reg.Shelves {
-		repoPath, err := RepoLocalPath(entry.URL)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: bad shelf URL %q: %v\n", entry.URL, err)
+	for _, entry := range reg.Sources {
+		if entry.Kind != "git" || entry.LocalPath == "" {
 			continue
 		}
 
-		manifest, err := LoadManifest(repoPath)
+		manifest, err := LoadManifest(entry.LocalPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cannot load shelf %q: %v\n", entry.Name, err)
+			fmt.Fprintf(os.Stderr, "warning: cannot load source %q: %v\n", entry.Name, err)
 			continue
 		}
 
 		for libKey, libDef := range manifest.Libraries {
-			items, err := DiscoverSpecs(repoPath, libKey, libDef)
+			items, err := DiscoverSpecs(entry.LocalPath, libKey, libDef)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: cannot discover specs for %s/%s: %v\n", entry.Name, libKey, err)
 				continue
 			}
 			for i := range items {
-				items[i].ShelfName = entry.Name
+				items[i].SourceName = entry.Name
 			}
 			cat := result[libKey]
 			cat.Items = append(cat.Items, items...)

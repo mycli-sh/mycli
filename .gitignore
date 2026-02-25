@@ -32,7 +32,6 @@ Thumbs.db
 coverage.out
 *.test
 /command.yaml
-/shelf/
 /mycli-libraries/
 scripts/dev-reset.sh
 

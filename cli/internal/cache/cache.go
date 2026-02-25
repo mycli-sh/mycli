@@ -93,14 +93,14 @@ func Sync(c *client.Client, force bool) (int, error) {
 func GetSpec(slug string) (*spec.CommandSpec, error) {
 	catalog, err := loadCatalog()
 	if err != nil {
-		return nil, fmt.Errorf("no cached catalog (run 'my cli sync' first): %w", err)
+		return nil, fmt.Errorf("no cached catalog (run 'my library sync' first): %w", err)
 	}
 
 	for _, item := range catalog.Items {
 		if item.Slug == slug && item.Library == "" {
 			data, err := loadSpecFile(item.CommandID, item.Version)
 			if err != nil {
-				return nil, fmt.Errorf("spec not cached (run 'my cli sync'): %w", err)
+				return nil, fmt.Errorf("spec not cached (run 'my library sync'): %w", err)
 			}
 			return spec.Parse(data)
 		}
@@ -112,14 +112,14 @@ func GetSpec(slug string) (*spec.CommandSpec, error) {
 func GetLibrarySpec(libraryKey, slug string) (*spec.CommandSpec, error) {
 	catalog, err := loadCatalog()
 	if err != nil {
-		return nil, fmt.Errorf("no cached catalog (run 'my cli sync' first): %w", err)
+		return nil, fmt.Errorf("no cached catalog (run 'my library sync' first): %w", err)
 	}
 
 	for _, item := range catalog.Items {
 		if matchLibraryKey(item, libraryKey) && item.Slug == slug {
 			data, err := loadSpecFile(item.CommandID, item.Version)
 			if err != nil {
-				return nil, fmt.Errorf("spec not cached (run 'my cli sync'): %w", err)
+				return nil, fmt.Errorf("spec not cached (run 'my library sync'): %w", err)
 			}
 			return spec.Parse(data)
 		}

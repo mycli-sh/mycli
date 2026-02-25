@@ -1,6 +1,6 @@
-shelfVersion: 1
-name: example-shelf
-description: An example shelf with ops and k8s command libraries
+schemaVersion: 1
+name: example-library
+description: An example library with ops and k8s command libraries
 libraries:
   ops:
     name: Operations

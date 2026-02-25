@@ -73,15 +73,22 @@ This guide walks you through creating a simple command, pushing it to the regist
 
 ## Using libraries (no account needed)
 
-You can also use commands from git-backed libraries without an account:
+You can also use commands from git-backed sources without an account:
 
 ```bash
-my library add https://github.com/user/example-library.git
+my source add https://github.com/user/example-library.git
 my <library> <command>
+```
+
+Or install from the registry:
+
+```bash
+my library install kubernetes
+my k8s <command>
 ```
 
 ## Next steps
 
 <LinkCard title="Creating Commands" description="Learn the full spec format for authoring commands." href="/guides/creating-commands/" />
 <LinkCard title="Template Variables" description="Use dynamic values in your commands." href="/guides/template-variables/" />
-<LinkCard title="Libraries" description="Share commands via git repos." href="/guides/libraries/" />
+<LinkCard title="Libraries" description="Share commands via git repos and the registry." href="/guides/libraries/" />

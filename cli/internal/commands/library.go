@@ -17,7 +17,6 @@ import (
 	"mycli.sh/cli/internal/client"
 	"mycli.sh/cli/internal/config"
 	"mycli.sh/cli/internal/library"
-	"mycli.sh/cli/internal/shelf"
 	"mycli.sh/pkg/spec"
 )
 
@@ -32,17 +31,17 @@ func newLibraryCmd() *cobra.Command {
 		Use:     "library",
 		Aliases: []string{"lib"},
 		Short:   "Discover, install, and manage command libraries",
-		Long:    "Search public libraries, install from the registry or git, update, publish, and manage installed libraries.",
+		Long:    "Search public libraries, install from the registry, publish, and manage installed libraries.",
 	}
 
 	cmd.AddCommand(newLibrarySearchCmd())
-	cmd.AddCommand(newLibraryAddCmd())
-	cmd.AddCommand(newLibraryRemoveCmd())
+	cmd.AddCommand(newLibraryInstallCmd())
+	cmd.AddCommand(newLibraryUninstallCmd())
 	cmd.AddCommand(newLibraryListCmd())
-	cmd.AddCommand(newLibraryUpdateCmd())
 	cmd.AddCommand(newLibraryReleaseCmd())
 	cmd.AddCommand(newLibraryInfoCmd())
 	cmd.AddCommand(newLibraryExploreCmd())
+	cmd.AddCommand(newLibrarySyncCmd())
 
 	return cmd
 }
@@ -88,32 +87,27 @@ func newLibrarySearchCmd() *cobra.Command {
 	}
 }
 
-func newLibraryAddCmd() *cobra.Command {
-	var ref string
-	var name string
-
+func newLibraryInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <identifier>",
-		Short: "Install a library from the registry or git",
-		Long: `Install a library. The identifier determines the source:
+		Use:   "install <identifier>",
+		Short: "Install a library from the registry",
+		Long: `Install a library from the registry.
 
-  my library add name            Registry install (e.g., kubernetes)
-  my library add owner/name      Registry install with disambiguation (e.g., fernando/devops)
-  my library add https://...     Git clone from URL
-  my library add git@...         Git clone from SSH URL`,
+  my library install kubernetes
+  my library install owner/name
+
+For git-backed sources, use 'my source add <git-url>' instead.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			identifier := args[0]
 
 			if isGitURL(identifier) {
-				return addGitLibrary(identifier, ref, name)
+				return fmt.Errorf("git URLs are not supported here; use 'my source add %s' instead", identifier)
 			}
-			return addRegistryLibrary(identifier)
+			return installRegistryLibrary(identifier)
 		},
 	}
 
-	cmd.Flags().StringVar(&ref, "ref", "", "git branch or tag to checkout (git libraries only)")
-	cmd.Flags().StringVar(&name, "name", "", "alias for the library (git libraries only)")
 	return cmd
 }
 
@@ -126,7 +120,7 @@ func isGitURL(s string) bool {
 		(strings.Contains(s, "@") && strings.Contains(s, ":"))
 }
 
-func addRegistryLibrary(identifier string) error {
+func installRegistryLibrary(identifier string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -172,11 +166,11 @@ func addRegistryLibrary(identifier string) error {
 		return nil
 	}
 
-	reg.Libraries = append(reg.Libraries, library.LibraryEntry{
+	reg.Sources = append(reg.Sources, library.SourceEntry{
 		Name:        displayName,
 		Owner:       detail.Owner,
 		Slug:        detail.Library.Slug,
-		Source:      "registry",
+		Kind:        "registry",
 		AddedAt:     time.Now(),
 		LastUpdated: time.Now(),
 	})
@@ -185,95 +179,6 @@ func addRegistryLibrary(identifier string) error {
 	}
 
 	fmt.Printf("Installed %s (%d commands).\n", displayName, len(detail.Commands))
-	return nil
-}
-
-func addGitLibrary(url, ref, nameOverride string) error {
-	reg, err := library.LoadRegistry()
-	if err != nil {
-		return err
-	}
-
-	// Derive local path
-	dest, err := shelf.RepoLocalPath(url)
-	if err != nil {
-		return err
-	}
-	// Use library repos dir instead of shelf repos dir
-	dest = strings.Replace(dest, shelf.ReposDir(), library.ReposDir(), 1)
-
-	if _, err := os.Stat(dest); err == nil {
-		return fmt.Errorf("directory already exists: %s", dest)
-	}
-
-	// Clone
-	fmt.Printf("Cloning %s...\n", url)
-	if err := shelf.Clone(url, dest, ref); err != nil {
-		return err
-	}
-
-	// Parse manifest
-	manifest, err := shelf.LoadManifest(dest)
-	if err != nil {
-		_ = os.RemoveAll(dest)
-		return fmt.Errorf("invalid library: %w", err)
-	}
-
-	name := nameOverride
-	if name == "" {
-		name = manifest.Name
-	}
-
-	// Check for duplicate name
-	if library.FindByName(reg, name) != nil {
-		_ = os.RemoveAll(dest)
-		return fmt.Errorf("library %q already exists (use --name to set a different alias)", name)
-	}
-
-	// Discover and validate all specs
-	totalSpecs := 0
-	var libKeys []string
-	for libKey, libDef := range manifest.Libraries {
-		items, err := shelf.DiscoverSpecs(dest, libKey, libDef)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-			continue
-		}
-		totalSpecs += len(items)
-		libKeys = append(libKeys, libKey)
-	}
-
-	if totalSpecs == 0 {
-		_ = os.RemoveAll(dest)
-		return fmt.Errorf("no valid commands found in library (check warnings above)")
-	}
-
-	// Get HEAD commit
-	commit, _ := shelf.HeadCommit(dest)
-
-	// Save to registry
-	entry := library.LibraryEntry{
-		Name:        name,
-		Slug:        name,
-		Source:      "git",
-		GitURL:      url,
-		Ref:         ref,
-		LocalPath:   dest,
-		AddedAt:     time.Now(),
-		LastUpdated: time.Now(),
-		LastCommit:  commit,
-		Libraries:   libKeys,
-	}
-	reg.Libraries = append(reg.Libraries, entry)
-	if err := library.SaveRegistry(reg); err != nil {
-		return fmt.Errorf("save registry: %w", err)
-	}
-
-	fmt.Printf("Added library %q (%d libraries, %d commands)\n", name, len(libKeys), totalSpecs)
-	for _, key := range libKeys {
-		lib := manifest.Libraries[key]
-		fmt.Printf("  %s — %s\n", key, lib.Name)
-	}
 	return nil
 }
 
@@ -286,10 +191,10 @@ func parseOwnerSlug(identifier string) (string, string) {
 	return "system", identifier
 }
 
-func newLibraryRemoveCmd() *cobra.Command {
+func newLibraryUninstallCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "remove <name>",
-		Short: "Remove an installed library",
+		Use:   "uninstall <name>",
+		Short: "Uninstall a registry library",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -304,13 +209,12 @@ func newLibraryRemoveCmd() *cobra.Command {
 				return fmt.Errorf("library %q not found", name)
 			}
 
-			// Clean up git clone directory
-			if entry.Source == "git" && entry.LocalPath != "" {
-				_ = os.RemoveAll(entry.LocalPath)
+			if entry.Kind == "git" {
+				return fmt.Errorf("%q is a git source; use 'my source remove %s' instead", name, name)
 			}
 
-			// Uninstall from API if registry-backed and logged in
-			if entry.Source == "registry" && auth.IsLoggedIn() {
+			// Uninstall from API if logged in
+			if entry.Kind == "registry" && auth.IsLoggedIn() {
 				cfg, err := config.Load()
 				if err == nil {
 					c := client.New(resolveAPIURL(cfg))
@@ -323,7 +227,7 @@ func newLibraryRemoveCmd() *cobra.Command {
 				return fmt.Errorf("save registry: %w", err)
 			}
 
-			fmt.Printf("Removed library %q.\n", name)
+			fmt.Printf("Uninstalled library %q.\n", name)
 			return nil
 		},
 	}
@@ -345,7 +249,7 @@ func newLibraryListCmd() *cobra.Command {
 			catalog, _ := cache.GetCatalog()
 			if catalog != nil {
 				seen := map[string]bool{}
-				for _, entry := range reg.Libraries {
+				for _, entry := range reg.Sources {
 					seen[entry.Slug] = true
 				}
 				for _, item := range catalog.Items {
@@ -356,32 +260,32 @@ func newLibraryListCmd() *cobra.Command {
 						continue
 					}
 					seen[item.Library] = true
-					reg.Libraries = append(reg.Libraries, library.LibraryEntry{
+					reg.Sources = append(reg.Sources, library.SourceEntry{
 						Name:        item.Library,
 						Owner:       item.LibraryOwner,
 						Slug:        item.Library,
-						Source:      "registry",
+						Kind:        "registry",
 						LastUpdated: catalog.SyncedAt,
 					})
 				}
 			}
 
-			if len(reg.Libraries) == 0 {
-				fmt.Println("No libraries installed. Run 'my library add <identifier>' to install one.")
+			if len(reg.Sources) == 0 {
+				fmt.Println("No libraries installed. Run 'my library install <name>' or 'my source add <git-url>' to add one.")
 				return nil
 			}
 
 			if jsonOutput {
-				data, _ := json.MarshalIndent(reg.Libraries, "", "  ")
+				data, _ := json.MarshalIndent(reg.Sources, "", "  ")
 				fmt.Println(string(data))
 				return nil
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "NAME\tSOURCE\tUPDATED")
-			for _, entry := range reg.Libraries {
+			for _, entry := range reg.Sources {
 				updated := entry.LastUpdated.Format("2006-01-02 15:04")
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", entry.Name, entry.Source, updated)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", entry.Name, entry.Kind, updated)
 			}
 			_ = w.Flush()
 			return nil
@@ -390,118 +294,6 @@ func newLibraryListCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output as JSON")
 	return cmd
-}
-
-func newLibraryUpdateCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "update [name]",
-		Short: "Update installed libraries",
-		Long:  "Update all libraries, or a specific one by name. For git libraries, runs git pull. For registry libraries, syncs from the API.",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			reg, err := library.LoadRegistry()
-			if err != nil {
-				return err
-			}
-
-			// API sync: always sync catalog when logged in (includes all server-side installs)
-			if auth.IsLoggedIn() {
-				cfg, err := config.Load()
-				if err != nil {
-					return fmt.Errorf("load config: %w", err)
-				}
-				c := client.New(resolveAPIURL(cfg))
-				fetched, err := cache.Sync(c, true)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: API sync failed: %v\n", err)
-				} else if fetched == 0 {
-					fmt.Println("Registry: already up to date.")
-				} else {
-					fmt.Printf("Registry: synced %d command(s).\n", fetched)
-				}
-			} else {
-				fmt.Println("Registry: skipped (not logged in)")
-			}
-
-			// Git libraries: update
-			var targets []int
-			if len(args) == 1 {
-				for i := range reg.Libraries {
-					if reg.Libraries[i].Name == args[0] {
-						targets = append(targets, i)
-						break
-					}
-				}
-				if len(targets) == 0 {
-					return fmt.Errorf("library %q not found", args[0])
-				}
-			} else {
-				for i := range reg.Libraries {
-					if reg.Libraries[i].Source == "git" {
-						targets = append(targets, i)
-					}
-				}
-			}
-
-			updated := 0
-			for _, i := range targets {
-				entry := &reg.Libraries[i]
-				if entry.Source != "git" {
-					continue
-				}
-
-				dest := entry.LocalPath
-				if dest == "" {
-					continue
-				}
-
-				oldCommit := entry.LastCommit
-
-				fmt.Printf("Updating %s...\n", entry.Name)
-				if err := shelf.Pull(dest); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to update %q: %v\n", entry.Name, err)
-					continue
-				}
-
-				newCommit, _ := shelf.HeadCommit(dest)
-				if newCommit == oldCommit {
-					fmt.Printf("  %s is already up to date (%s)\n", entry.Name, oldCommit)
-					continue
-				}
-
-				// Re-validate manifest
-				manifest, err := shelf.LoadManifest(dest)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: %q manifest invalid after update: %v\n", entry.Name, err)
-					continue
-				}
-
-				entry.LastUpdated = time.Now()
-				entry.LastCommit = newCommit
-
-				var libKeys []string
-				for key := range manifest.Libraries {
-					libKeys = append(libKeys, key)
-				}
-				entry.Libraries = libKeys
-
-				fmt.Printf("  Updated %s: %s -> %s\n", entry.Name, oldCommit, newCommit)
-				updated++
-			}
-
-			if len(targets) > 0 {
-				if err := library.SaveRegistry(reg); err != nil {
-					return fmt.Errorf("save registry: %w", err)
-				}
-			}
-
-			if updated == 0 && len(targets) > 0 {
-				fmt.Println("Git libraries: already up to date.")
-			}
-
-			return nil
-		},
-	}
 }
 
 func newLibraryReleaseCmd() *cobra.Command {
@@ -530,12 +322,12 @@ manifest are released under the same tag. Requires login.`,
 			}
 
 			// Verify tag exists
-			if !shelf.TagExists(cwd, tag) {
+			if !library.TagExists(cwd, tag) {
 				return fmt.Errorf("tag %q not found (run 'git tag %s' first)", tag, tag)
 			}
 
 			// Get commit hash for the tag
-			commitHash, err := shelf.TagCommitHash(cwd, tag)
+			commitHash, err := library.TagCommitHash(cwd, tag)
 			if err != nil {
 				return fmt.Errorf("get tag commit: %w", err)
 			}
@@ -547,12 +339,12 @@ manifest are released under the same tag. Requires login.`,
 			}
 			defer func() { _ = os.RemoveAll(tmpDir) }()
 
-			if err := shelf.ArchiveTag(cwd, tag, tmpDir); err != nil {
+			if err := library.ArchiveTag(cwd, tag, tmpDir); err != nil {
 				return fmt.Errorf("extract tag: %w", err)
 			}
 
 			// Load manifest from the tagged content
-			manifest, err := shelf.LoadManifest(tmpDir)
+			manifest, err := library.LoadManifest(tmpDir)
 			if err != nil {
 				return fmt.Errorf("no valid manifest at tag %s: %w", tag, err)
 			}
@@ -571,7 +363,7 @@ manifest are released under the same tag. Requires login.`,
 
 			// Release each library in the manifest
 			for libKey, libDef := range manifest.Libraries {
-				items, err := shelf.DiscoverSpecs(tmpDir, libKey, libDef)
+				items, err := library.DiscoverSpecs(tmpDir, libKey, libDef)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 					continue
@@ -644,7 +436,7 @@ func newLibraryInfoCmd() *cobra.Command {
 			if reg != nil {
 				if entry := library.FindByName(reg, identifier); entry != nil {
 					fmt.Printf("Name:    %s\n", entry.Name)
-					fmt.Printf("Source:  %s\n", entry.Source)
+					fmt.Printf("Source:  %s\n", entry.Kind)
 					if isSystemOwner(entry.Owner) {
 						fmt.Printf("Status:  official\n")
 					} else {
@@ -658,13 +450,13 @@ func newLibraryInfoCmd() *cobra.Command {
 					}
 					fmt.Printf("Updated: %s\n", entry.LastUpdated.Format("2006-01-02 15:04"))
 
-					if entry.Source == "git" && entry.LocalPath != "" {
+					if entry.Kind == "git" && entry.LocalPath != "" {
 						// Show libraries and commands from manifest
-						manifest, err := shelf.LoadManifest(entry.LocalPath)
+						manifest, err := library.LoadManifest(entry.LocalPath)
 						if err == nil {
 							totalCmds := 0
 							for libKey, libDef := range manifest.Libraries {
-								items, _ := shelf.DiscoverSpecs(entry.LocalPath, libKey, libDef)
+								items, _ := library.DiscoverSpecs(entry.LocalPath, libKey, libDef)
 								totalCmds += len(items)
 								fmt.Printf("\nLibrary %s (%d commands):\n", libKey, len(items))
 								for _, item := range items {
@@ -716,6 +508,35 @@ func newLibraryInfoCmd() *cobra.Command {
 				for _, rel := range releases {
 					fmt.Printf("  %s  %s  (%d commands)\n", rel.Tag, rel.ReleasedAt, rel.CommandCount)
 				}
+			}
+			return nil
+		},
+	}
+}
+
+func newLibrarySyncCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "sync",
+		Short: "Sync registry libraries with the server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !auth.IsLoggedIn() {
+				return fmt.Errorf("not logged in (run 'my cli login' first)")
+			}
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			c := client.New(resolveAPIURL(cfg))
+
+			fmt.Println("Syncing...")
+			fetched, err := cache.Sync(c, true)
+			if err != nil {
+				return fmt.Errorf("sync failed: %w", err)
+			}
+			if fetched == 0 {
+				fmt.Println("Already up to date.")
+			} else {
+				fmt.Printf("Synced %d command(s).\n", fetched)
 			}
 			return nil
 		},

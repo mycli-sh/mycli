@@ -1,47 +1,36 @@
 ---
-title: my library add
-description: Install a library from the registry or a git URL.
+title: my library install
+description: Install a library from the registry.
 ---
 
 ```bash
-my library add <identifier> [flags]
+my library install <name>
 ```
 
-Installs a library by name from the registry or by git URL. Clones the repository, validates the manifest and command specs, and registers it.
+Installs a library by name from the public registry. Downloads the library and makes its commands available locally.
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `identifier` | Library name (from registry) or git URL (required) |
-
-## Flags
-
-| Flag | Description |
-|------|-------------|
-| `--ref` | Git branch or tag to checkout |
-| `--name` | Alias for the library (defaults to repo name) |
+| `name` | Library name from the registry (required) |
 
 ## Examples
 
 ```bash
 # Install from the registry
-my library add kubernetes
+my library install kubernetes
 
-# Install from a git URL
-my library add https://github.com/user/my-library.git
-
-# Install with a specific branch
-my library add https://github.com/user/my-library.git --ref v1.0
-
-# Install with a custom name
-my library add https://github.com/user/my-library.git --name tools
+# Install a deployment tools library
+my library install deploy-tools
 ```
 
 ## Behavior
 
-1. Clones the repository to `~/.my/libraries/repos/`
-2. Reads the shelf manifest (`shelf.yaml`, `shelf.yml`, or `shelf.json`)
-3. Validates all command specs in each library directory
-4. Registers the library in `~/.my/libraries/libraries.json`
-5. Commands become available as `my <library> <slug>`
+1. Resolves the library name in the public registry
+2. Downloads the library and validates all command specs
+3. Commands become available as `my <library> <slug>`
+
+:::tip
+To install from a git URL instead, use [`my source add`](/reference/source/add/).
+:::

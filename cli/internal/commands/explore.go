@@ -193,11 +193,11 @@ func installLibraryCmd(c *client.Client, owner, slug string) tea.Cmd {
 			return installResultMsg{name: displayName, err: fmt.Errorf("already installed")}
 		}
 
-		reg.Libraries = append(reg.Libraries, library.LibraryEntry{
+		reg.Sources = append(reg.Sources, library.SourceEntry{
 			Name:        displayName,
 			Owner:       detail.Owner,
 			Slug:        detail.Library.Slug,
-			Source:      "registry",
+			Kind:        "registry",
 			AddedAt:     time.Now(),
 			LastUpdated: time.Now(),
 		})

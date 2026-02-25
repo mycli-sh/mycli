@@ -1,0 +1,26 @@
+---
+title: my source update
+description: Update one or all git-backed sources.
+---
+
+```bash
+my source update [name]
+```
+
+Pulls the latest changes from git-backed source repositories via `git pull`.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Optional. Name of a specific source to update. If omitted, updates all sources. |
+
+## Examples
+
+```bash
+# Update all sources
+my source update
+
+# Update a specific source
+my source update my-tools
+```

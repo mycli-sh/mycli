@@ -1,0 +1,48 @@
+---
+title: my source add
+description: Add a git-backed source repository.
+---
+
+```bash
+my source add <git-url> [flags]
+```
+
+Clones a git repository containing a `mycli.yaml` manifest, validates the manifest and command specs, and registers it as a source. Commands from all libraries in the source become available immediately.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `git-url` | Git URL of the source repository (required) |
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--ref` | Git branch or tag to checkout |
+| `--name` | Alias for the source (defaults to repo name) |
+
+## Examples
+
+```bash
+# Add a source from a git URL
+my source add https://github.com/user/my-library.git
+
+# Add with a specific branch
+my source add https://github.com/user/my-library.git --ref v1.0
+
+# Add with a custom name
+my source add https://github.com/user/my-library.git --name tools
+```
+
+## Behavior
+
+1. Clones the repository to `~/.my/sources/repos/`
+2. Reads the source manifest (`mycli.yaml`, `mycli.yml`, or `mycli.json`)
+3. Validates all command specs in each library directory
+4. Registers the source in `~/.my/sources/sources.json`
+5. Commands become available as `my <library> <slug>`
+
+:::tip
+To install a library from the public registry instead, use [`my library install`](/reference/library/add/).
+:::

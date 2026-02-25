@@ -80,6 +80,10 @@ export default defineConfig({
               autogenerate: { directory: "reference/cli" },
             },
             {
+              label: "Source Commands",
+              autogenerate: { directory: "reference/source" },
+            },
+            {
               label: "Library Commands",
               autogenerate: { directory: "reference/library" },
             },

@@ -1,67 +1,85 @@
 ---
 title: Libraries
-description: Share and use curated command sets via git-backed libraries.
+description: Share and use curated command sets via git-backed sources and the registry.
 ---
 
 import { FileTree, LinkCard } from '@astrojs/starlight/components';
 
-A **library** is a collection of commands that you can install and use. Libraries can come from the registry or from any git repository — no account needed.
+A **library** is a collection of commands that you can install and use. Libraries can come from two places:
 
-## How it works
+- **Git sources** — any git repository containing a `mycli.yaml` manifest, added with `my source add`
+- **Registry** — public libraries installed by name with `my library install`
 
-1. `my library add <identifier>` installs from the registry by name, or clones a git URL and reads its manifest (`shelf.yaml`)
-2. Each library in the manifest maps to a directory of command spec files
-3. Commands become available as `my <library> <slug>` (e.g., `my ops deploy`)
-4. `my library update` pulls the latest changes from all installed libraries
+Both types make commands available as `my <library> <slug>` (e.g., `my ops deploy`).
 
-`library` has alias `lib` (e.g., `my lib add kubernetes`).
+## Git-backed sources
 
-## Install a library
+A **source** is a git repository that contains one or more libraries of commands. No account is needed.
 
-### From the registry
+### Add a source
 
 ```bash
-my library add kubernetes
-```
-
-### From a git URL
-
-```bash
-my library add https://github.com/user/example-library.git
+my source add https://github.com/user/example-library.git
 ```
 
 ### Specify a branch or tag
 
 ```bash
-my library add https://github.com/user/example-library.git --ref v1.0
+my source add https://github.com/user/example-library.git --ref v1.0
 ```
 
 ### Custom name
 
 ```bash
-my library add https://github.com/user/example-library.git --name my-tools
+my source add https://github.com/user/example-library.git --name my-tools
+```
+
+### Manage sources
+
+```bash
+my source list              # List installed git sources
+my source update            # Update all sources (git pull)
+my source update my-tools   # Update a specific source
+my source remove my-tools   # Remove a source
+```
+
+## Registry libraries
+
+Install libraries from the public registry by name:
+
+```bash
+my library install kubernetes
+```
+
+Uninstall a registry library:
+
+```bash
+my library uninstall kubernetes
+```
+
+Sync registry libraries manually to fetch the latest commands:
+
+```bash
+my library sync
 ```
 
 ## Run library commands
 
-After installing a library, its commands are available as top-level subcommands:
+After installing a library (from either a source or the registry), its commands are available as top-level subcommands:
 
 ```bash
 my ops deploy -- production
 my k8s logs -- my-pod
 ```
 
-## Manage libraries
+## Discover libraries
+
+### List
 
 ```bash
-my library list              # List all installed libraries
+my library list              # List all installed libraries (from any source)
 my library list --json       # Output as JSON
-my library update            # Update all libraries
-my library update my-tools   # Update a specific library
-my library remove my-tools   # Remove a library
 ```
-
-## Discover libraries
 
 ### Search
 
@@ -87,13 +105,13 @@ my library info kubernetes
 
 ## Publish a library
 
-### Create your own library repo
+### Create your own source repository
 
 #### Directory layout
 
 <FileTree>
 - my-library/
-  - shelf.yaml Manifest (required)
+  - mycli.yaml Manifest (required)
   - ops/ Library directory
     - deploy.yaml Command spec (slug: "deploy")
     - status.yaml Command spec (slug: "status")
@@ -101,10 +119,10 @@ my library info kubernetes
     - logs.yaml Command spec (slug: "logs")
 </FileTree>
 
-#### Manifest format (`shelf.yaml`)
+#### Manifest format (`mycli.yaml`)
 
-```yaml title="shelf.yaml"
-shelfVersion: 1
+```yaml title="mycli.yaml"
+schemaVersion: 1
 name: my-library
 description: A collection of useful commands
 libraries:
@@ -118,12 +136,12 @@ libraries:
     path: k8s
 ```
 
-- `shelfVersion` must be `1`
+- `schemaVersion` must be `1`
 - Each key in `libraries` is the library slug (must match `^[a-z][a-z0-9-]*$`)
 - `path` points to a directory containing command spec files
 - Each spec file's `metadata.slug` must match the filename (minus extension)
 
-`shelf.yml` and `shelf.json` are also accepted for backward compatibility.
+`mycli.yml`, `mycli.json`, and the older `shelf.yaml`/`shelf.yml`/`shelf.json` are also accepted for backward compatibility.
 
 ### Release a version
 
@@ -135,10 +153,11 @@ my library release v1.0.0
 
 ### Storage
 
-- Library repos are cloned to `~/.my/libraries/repos/` (path derived from URL)
-- The library registry lives at `~/.my/libraries/libraries.json`
+- Source repos are cloned to `~/.my/sources/repos/` (path derived from URL)
+- The source registry lives at `~/.my/sources/sources.json`
 
 ## Next steps
 
 <LinkCard title="Library Manifest Reference" description="Full manifest format." href="/reference/library-manifest/" />
-<LinkCard title="library add" description="Complete CLI reference." href="/reference/library/add/" />
+<LinkCard title="source add" description="Add a git-backed source." href="/reference/source/add/" />
+<LinkCard title="library install" description="Install from the registry." href="/reference/library/add/" />

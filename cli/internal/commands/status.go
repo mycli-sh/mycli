@@ -8,7 +8,7 @@ import (
 	"mycli.sh/cli/internal/auth"
 	"mycli.sh/cli/internal/cache"
 	"mycli.sh/cli/internal/config"
-	"mycli.sh/cli/internal/shelf"
+	"mycli.sh/cli/internal/library"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -38,21 +38,17 @@ func newStatusCmd() *cobra.Command {
 				fmt.Println("Commands:   0 cached")
 			}
 
-			// Shelf info
-			reg, err := shelf.LoadRegistry()
-			if err == nil && len(reg.Shelves) > 0 {
-				totalLibs := 0
-				for _, s := range reg.Shelves {
-					totalLibs += len(s.Libraries)
-				}
-				allLibs, _ := shelf.GetAllLibraries()
+			// Library info
+			reg, err := library.LoadRegistry()
+			if err == nil && len(reg.Sources) > 0 {
+				allLibs, _ := library.GetAllLibraries()
 				totalCmds := 0
 				for _, libCatalog := range allLibs {
 					totalCmds += len(libCatalog.Items)
 				}
-				fmt.Printf("Shelves:    %d (%d libraries, %d commands)\n", len(reg.Shelves), totalLibs, totalCmds)
+				fmt.Printf("Libraries:  %d (%d commands)\n", len(reg.Sources), totalCmds)
 			} else {
-				fmt.Println("Shelves:    0")
+				fmt.Println("Libraries:  0")
 			}
 
 			return nil

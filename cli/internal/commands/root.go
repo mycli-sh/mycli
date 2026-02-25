@@ -14,7 +14,6 @@ import (
 	"mycli.sh/cli/internal/engine"
 	"mycli.sh/cli/internal/history"
 	"mycli.sh/cli/internal/library"
-	"mycli.sh/cli/internal/shelf"
 )
 
 var apiURL string
@@ -33,6 +32,7 @@ func NewRootCmd() *cobra.Command {
 	// Register sub-commands
 	cmd.AddCommand(newCliCmd())
 	cmd.AddCommand(newLibraryCmd())
+	cmd.AddCommand(newSourceCmd())
 
 	// Register dynamic library commands from cached catalog
 	registeredSlugs := registerAPILibraryCommands(cmd)
@@ -184,7 +184,7 @@ func containsHelpFlag(args []string) bool {
 func registerGitLibraryCommands(root *cobra.Command, registeredCmds map[string]map[string]bool) {
 	reg, err := library.LoadRegistry()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to load library registry: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warning: failed to load source registry: %v\n", err)
 		return
 	}
 
@@ -194,21 +194,21 @@ func registerGitLibraryCommands(root *cobra.Command, registeredCmds map[string]m
 		registeredAliases[libSlug] = true
 	}
 
-	for _, entry := range reg.Libraries {
-		if entry.Source != "git" || entry.LocalPath == "" {
+	for _, entry := range reg.Sources {
+		if entry.Kind != "git" || entry.LocalPath == "" {
 			continue
 		}
 
-		manifest, err := shelf.LoadManifest(entry.LocalPath)
+		manifest, err := library.LoadManifest(entry.LocalPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cannot load library %q: %v\n", entry.Name, err)
+			fmt.Fprintf(os.Stderr, "warning: cannot load source %q: %v\n", entry.Name, err)
 			continue
 		}
 
 		for libSlug, libDef := range manifest.Libraries {
 			registeredAliases[libSlug] = true
 
-			items, err := shelf.DiscoverSpecs(entry.LocalPath, libSlug, libDef)
+			items, err := library.DiscoverSpecs(entry.LocalPath, libSlug, libDef)
 			if err != nil {
 				continue
 			}
@@ -266,7 +266,7 @@ func registerGitLibraryCommands(root *cobra.Command, registeredCmds map[string]m
 					Short:              item.Description,
 					DisableFlagParsing: true,
 					RunE: func(cmd *cobra.Command, args []string) error {
-						s, err := shelf.GetSpec(item.SpecPath)
+						s, err := library.GetSpec(item.SpecPath)
 						if err != nil {
 							return err
 						}

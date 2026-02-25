@@ -3,8 +3,8 @@ import { isSystemOwner } from "../../lib/owner-utils";
 
 export function InstallSnippet({ owner, slug }: { owner: string; slug: string }) {
   const command = isSystemOwner(owner)
-    ? `my library add ${slug}`
-    : `my library add ${owner}/${slug}`;
+    ? `my library install ${slug}`
+    : `my library install ${owner}/${slug}`;
 
   return (
     <div className="flex items-center gap-2 rounded-lg bg-zinc-950 border border-zinc-800 px-4 py-2.5">

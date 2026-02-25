@@ -1,16 +1,16 @@
 ---
 title: Library Manifest
-description: Reference for the shelf.yaml manifest format used by library repositories.
+description: Reference for the mycli.yaml manifest format used by source repositories.
 ---
 
 import { FileTree } from '@astrojs/starlight/components';
 
-Every library repository must have a manifest file at its root. The accepted filenames are `shelf.yaml` (preferred), `shelf.yml`, or `shelf.json`.
+Every source repository must have a manifest file at its root. The accepted filenames are `mycli.yaml` (preferred), `mycli.yml`, or `mycli.json`. The older `shelf.yaml`, `shelf.yml`, and `shelf.json` names are also accepted for backward compatibility.
 
 ## Full example
 
-```yaml title="shelf.yaml"
-shelfVersion: 1
+```yaml title="mycli.yaml"
+schemaVersion: 1
 name: my-library
 description: A collection of useful commands
 libraries:
@@ -28,9 +28,9 @@ libraries:
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
-| `shelfVersion` | Yes | `integer` | Must be `1` |
-| `name` | Yes | `string` | Library name |
-| `description` | No | `string` | Library description |
+| `schemaVersion` | Yes | `integer` | Must be `1` |
+| `name` | Yes | `string` | Source name |
+| `description` | No | `string` | Source description |
 | `libraries` | Yes | `object` | Map of library slug to library definition |
 
 ## Library definition
@@ -47,7 +47,7 @@ Each key in `libraries` is the library slug, which must match `^[a-z][a-z0-9-]*$
 
 <FileTree>
 - my-library/
-  - shelf.yaml Manifest
+  - mycli.yaml Manifest
   - ops/ Library directory
     - deploy.yaml Command spec (slug: "deploy")
     - status.yaml Command spec (slug: "status")

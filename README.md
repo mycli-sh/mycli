@@ -27,11 +27,11 @@ make dev
 ./bin/my cli run -f command.yaml
 ```
 
-**Or use libraries without an account:**
+**Or use git-backed sources without an account:**
 
 ```bash
 make build-cli
-./bin/my library add https://github.com/user/example-library.git
+./bin/my source add https://github.com/user/example-library.git
 ./bin/my <library> <command>
 ```
 
@@ -58,20 +58,26 @@ All management subcommands live under `cli`:
 | `cli status` | Show API URL, login state, last sync time, cached command count |
 | `cli history` | Show run history |
 
+### Sources (git-backed)
+
+| Command | Description |
+|---------|-------------|
+| `source add <git-url>` | Clone a git source repository |
+| `source remove <name>` | Remove a git source |
+| `source list` | List installed git sources |
+| `source update [name]` | Update all or a specific git source (git pull) |
+
 ### Libraries
 
 | Command | Description |
 |---------|-------------|
+| `library install <name>` | Install a library from the registry |
+| `library uninstall <name>` | Remove a registry-installed library |
+| `library list` | List all libraries (from any source) |
 | `library search <query>` | Search public libraries |
-| `library add <identifier>` | Install a library from the registry or a git URL |
-| `library remove <name>` | Remove an installed library |
-| `library list` | List installed libraries |
-| `library update [name]` | Update all or a specific library |
-| `library info <identifier>` | Show library details |
 | `library explore` | Interactive TUI for browsing libraries |
+| `library info <identifier>` | Show library details |
 | `library release <tag>` | Create a versioned release from a git tag |
-
-`library` has alias `lib` (e.g., `my lib add kubernetes`).
 
 Installed library commands are available as top-level subcommands: `my <library> <command>`.
 
@@ -93,8 +99,9 @@ Installed library commands are available as top-level subcommands: `my <library>
 | `cli run` | `-f, --file` | Run directly from a spec file |
 | `cli history` | `-n, --last` | Number of entries to show (default: 20) |
 | `cli init` | `--force` | Overwrite existing spec file |
-| `library add` | `--ref` | Git branch or tag to checkout |
-| `library add` | `--name` | Alias for the library (defaults to repo name) |
+| `source add` | `--ref` | Git branch or tag to checkout |
+| `source add` | `--name` | Alias for the source (defaults to repo name) |
+| `source list` | `--json` | Output as JSON |
 | `library list` | `--json` | Output as JSON |
 
 ## Command Spec Format
@@ -167,24 +174,24 @@ Step `run` lines and `env` values are rendered as Go templates:
 | `{{.cwd}}` | Current working directory |
 | `{{.home}}` | User's home directory |
 
-## Library Repos
+## Source Repos
 
-A **library repo** is a git repository that provides one or more command **libraries**. Library repos let you share and use curated sets of commands without needing an account or API server — just a git URL.
+A **source repo** is a git repository that provides one or more command **libraries**. Source repos let you share and use curated sets of commands without needing an account or API server — just a git URL.
 
 ### How It Works
 
-1. `my library add <url>` clones the repo and reads its shelf manifest (`shelf.yaml`)
+1. `my source add <url>` clones the repo and reads its manifest (`mycli.yaml`)
 2. Each library in the manifest maps to a directory of command spec files
 3. Commands become available as `my <library> <slug>` (e.g., `my ops deploy`)
-4. `my library update` pulls the latest changes from all library repos
+4. `my source update` pulls the latest changes from all source repos
 
-### Manifest Format (`shelf.yaml`)
+### Manifest Format (`mycli.yaml`)
 
-Every library repo must have a `shelf.yaml` at its root (`shelf.yml` and `shelf.json` are also accepted for backward compatibility):
+Every source repo must have a `mycli.yaml` at its root (`mycli.yml`, `mycli.json`, and the older `shelf.yaml`/`shelf.yml`/`shelf.json` are also accepted):
 
 ```yaml
-shelfVersion: 1
-name: my-shelf
+schemaVersion: 1
+name: my-library
 description: A collection of useful commands
 libraries:
   ops:
@@ -197,7 +204,7 @@ libraries:
     path: k8s
 ```
 
-- `shelfVersion` must be `1`
+- `schemaVersion` must be `1`
 - Each key in `libraries` is the library slug (must match `^[a-z][a-z0-9-]*$`)
 - `path` points to a directory containing command spec files
 - Each `.yaml`, `.yml`, or `.json` file in a library directory must be a valid command spec whose `metadata.slug` matches the filename (minus extension)
@@ -206,7 +213,7 @@ libraries:
 
 ```
 my-library/
-  shelf.yaml            # Manifest
+  mycli.yaml            # Manifest
   ops/                  # Library directory
     deploy.yaml         # Command spec (slug: "deploy")
     status.yaml         # Command spec (slug: "status")
@@ -216,10 +223,10 @@ my-library/
 
 ### Storage
 
-- Library repos are cloned to `~/.my/libraries/repos/` (path derived from URL)
-- The library registry lives at `~/.my/libraries/libraries.json`
+- Source repos are cloned to `~/.my/sources/repos/` (path derived from URL)
+- The source registry lives at `~/.my/sources/sources.json`
 
-See [`examples/shelf/`](examples/shelf/) for a complete working example.
+See [`examples/library/`](examples/library/) for a complete working example.
 
 ## API Server
 
@@ -341,8 +348,7 @@ cli/internal/engine/         Template rendering + shell execution
 cli/internal/cache/          Local spec cache (~/.my/cache/)
 cli/internal/auth/           Token storage (OS keyring + file fallback)
 cli/internal/history/        Run history (JSONL at ~/.my/history.jsonl)
-cli/internal/library/        Library registry management (~/.my/libraries/)
-cli/internal/shelf/          Git operations, manifest parsing, spec discovery
+cli/internal/library/        Library management: registry, git ops, manifest parsing, spec discovery
 cli/internal/client/         API client
 cli/internal/config/         Config loading
 cli/internal/termui/         Terminal UI helpers (Bubble Tea)

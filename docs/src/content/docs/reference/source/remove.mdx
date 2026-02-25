@@ -1,0 +1,32 @@
+---
+title: my source remove
+description: Remove a git-backed source.
+---
+
+```bash
+my source remove <name>
+```
+
+Removes a git-backed source and deletes the cloned repository.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Name of the source to remove (required) |
+
+## Examples
+
+```bash
+my source remove my-library
+```
+
+## Behavior
+
+- Removes the source entry from `~/.my/sources/sources.json`
+- Deletes the cloned repository from `~/.my/sources/repos/`
+- All library commands from this source are no longer available
+
+:::note
+To uninstall a registry-installed library, use [`my library uninstall`](/reference/library/remove/) instead.
+:::

@@ -1,26 +1,33 @@
 ---
-title: my library update
-description: Update one or all installed libraries.
+title: my library update (deprecated)
+description: Updating libraries and sources.
 ---
 
-```bash
-my library update [name]
-```
+Library updates are now handled differently depending on how the library was installed:
 
-Pulls the latest changes from library repositories via `git pull`.
+## Git-backed sources
 
-## Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `name` | Optional. Name of a specific library to update. If omitted, updates all libraries. |
-
-## Examples
+Use [`my source update`](/reference/source/update/) to pull the latest changes from git-backed source repositories:
 
 ```bash
-# Update all libraries
-my library update
+# Update all sources
+my source update
 
-# Update a specific library
-my library update my-tools
+# Update a specific source
+my source update my-tools
 ```
+
+## Registry libraries
+
+Use [`my library sync`](/reference/library/sync/) to manually fetch the latest commands for registry-installed libraries:
+
+```bash
+my library sync
+```
+
+## See also
+
+- [`my library sync`](/reference/library/sync/) — Sync registry libraries
+- [`my source update`](/reference/source/update/) — Update git-backed sources
+- [`my source list`](/reference/source/list/) — List installed git sources
+- [`my library list`](/reference/library/list/) — List all libraries from all sources

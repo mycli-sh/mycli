@@ -9,7 +9,6 @@ import (
 
 	"mycli.sh/cli/internal/cache"
 	"mycli.sh/cli/internal/library"
-	"mycli.sh/cli/internal/shelf"
 	"mycli.sh/pkg/spec"
 )
 
@@ -112,22 +111,22 @@ func resolveSpec(arg string) (*spec.CommandSpec, error) {
 	// Try git library search across all libraries
 	reg, err := library.LoadRegistry()
 	if err == nil && reg != nil {
-		for _, entry := range reg.Libraries {
-			if entry.Source != "git" || entry.LocalPath == "" {
+		for _, entry := range reg.Sources {
+			if entry.Kind != "git" || entry.LocalPath == "" {
 				continue
 			}
-			manifest, err := shelf.LoadManifest(entry.LocalPath)
+			manifest, err := library.LoadManifest(entry.LocalPath)
 			if err != nil {
 				continue
 			}
 			for libKey, libDef := range manifest.Libraries {
-				items, err := shelf.DiscoverSpecs(entry.LocalPath, libKey, libDef)
+				items, err := library.DiscoverSpecs(entry.LocalPath, libKey, libDef)
 				if err != nil {
 					continue
 				}
 				for _, item := range items {
 					if item.Slug == arg || containsAlias(item.Aliases, arg) {
-						return shelf.GetSpec(item.SpecPath)
+						return library.GetSpec(item.SpecPath)
 					}
 				}
 			}
@@ -143,11 +142,11 @@ func resolveGitLibrarySpec(libName, cmdSlug string) (*spec.CommandSpec, error) {
 		return nil, fmt.Errorf("command %q not found in library %q", cmdSlug, libName)
 	}
 
-	for _, entry := range reg.Libraries {
-		if entry.Source != "git" || entry.LocalPath == "" {
+	for _, entry := range reg.Sources {
+		if entry.Kind != "git" || entry.LocalPath == "" {
 			continue
 		}
-		manifest, err := shelf.LoadManifest(entry.LocalPath)
+		manifest, err := library.LoadManifest(entry.LocalPath)
 		if err != nil {
 			continue
 		}
@@ -155,13 +154,13 @@ func resolveGitLibrarySpec(libName, cmdSlug string) (*spec.CommandSpec, error) {
 			if libKey != libName && !containsAlias(libDef.Aliases, libName) {
 				continue
 			}
-			items, err := shelf.DiscoverSpecs(entry.LocalPath, libKey, libDef)
+			items, err := library.DiscoverSpecs(entry.LocalPath, libKey, libDef)
 			if err != nil {
 				continue
 			}
 			for _, item := range items {
 				if item.Slug == cmdSlug || containsAlias(item.Aliases, cmdSlug) {
-					return shelf.GetSpec(item.SpecPath)
+					return library.GetSpec(item.SpecPath)
 				}
 			}
 		}

@@ -1,0 +1,25 @@
+---
+title: my library sync
+description: Sync registry libraries with the server.
+---
+
+```bash
+my library sync
+```
+
+Fetches the latest command catalog from the server for all registry-installed libraries. This bypasses the ETag cache to ensure you have the most up-to-date commands.
+
+Requires login (`my cli login`).
+
+## Examples
+
+```bash
+# Sync all registry libraries
+my library sync
+```
+
+## See also
+
+- [`my library install`](/reference/library/add/) — Install a registry library
+- [`my library list`](/reference/library/list/) — List all installed libraries
+- [`my source update`](/reference/source/update/) — Update git-backed sources

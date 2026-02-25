@@ -1,0 +1,30 @@
+---
+title: my source list
+description: List installed git-backed sources.
+---
+
+```bash
+my source list [flags]
+```
+
+Lists all installed git-backed sources with their names, URLs, and available libraries.
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON |
+
+## Examples
+
+```bash
+# List all sources
+my source list
+
+# Output as JSON
+my source list --json
+```
+
+:::tip
+To see all libraries (from both git sources and the registry), use [`my library list`](/reference/library/list/).
+:::

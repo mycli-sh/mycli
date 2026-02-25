@@ -1,4 +1,4 @@
-package shelf
+package library
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 
 const credentialHint = `If this is a private repository, configure credentials before retrying:
   HTTPS: git credential-osxkeychain, gh auth setup-git, or ~/.netrc
-  SSH:   my shelf add git@github.com:user/repo.git`
+  SSH:   my source add git@github.com:user/repo.git`
 
 // Clone clones a git repository to dest. If ref is non-empty, it checks out that branch/tag.
 // Interactive prompts are suppressed; git must authenticate via pre-configured credentials

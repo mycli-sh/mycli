@@ -1,4 +1,4 @@
-package shelf
+package library
 
 import (
 	"encoding/json"
@@ -6,58 +6,41 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
-	"mycli.sh/cli/internal/config"
 	"mycli.sh/pkg/spec"
 )
 
-var slugPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-
-func ShelvesDir() string {
-	return filepath.Join(config.DefaultDir(), "shelves")
+// Manifest is the on-disk format for mycli.yaml in a library repo.
+type Manifest struct {
+	Version     int                   `json:"schemaVersion" yaml:"schemaVersion"`
+	Namespace   string                `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Name        string                `json:"name" yaml:"name"`
+	Description string                `json:"description,omitempty" yaml:"description,omitempty"`
+	Libraries   map[string]LibraryDef `json:"libraries" yaml:"libraries"`
 }
 
-func ReposDir() string {
-	return filepath.Join(ShelvesDir(), "repos")
+// LibraryDef defines a library within a manifest.
+type LibraryDef struct {
+	Name        string   `json:"name" yaml:"name"`
+	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
+	Path        string   `json:"path" yaml:"path"`
+	Aliases     []string `json:"aliases,omitempty" yaml:"aliases,omitempty"`
 }
 
-func RegistryPath() string {
-	return filepath.Join(ShelvesDir(), "shelves.json")
-}
-
-// LoadRegistry reads the shelves registry from disk.
-// Returns an empty registry if the file doesn't exist.
-func LoadRegistry() (*ShelfRegistry, error) {
-	data, err := os.ReadFile(RegistryPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &ShelfRegistry{}, nil
-		}
-		return nil, fmt.Errorf("read registry: %w", err)
-	}
-	var reg ShelfRegistry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("parse registry: %w", err)
-	}
-	return &reg, nil
-}
-
-// SaveRegistry writes the shelves registry to disk.
-func SaveRegistry(reg *ShelfRegistry) error {
-	if err := os.MkdirAll(ShelvesDir(), 0700); err != nil {
-		return fmt.Errorf("create shelves dir: %w", err)
-	}
-	data, err := json.MarshalIndent(reg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal registry: %w", err)
-	}
-	return os.WriteFile(RegistryPath(), data, 0600)
+// CatalogItem is a bridge type used to register library commands with Cobra.
+type CatalogItem struct {
+	SourceName  string
+	Library     string
+	Slug        string
+	Name        string
+	Description string
+	SpecPath    string // absolute path to the spec file
+	Aliases     []string
 }
 
 // RepoLocalPath derives a local filesystem path from a git URL.
-// For example: https://github.com/user/repo.git → github.com/user/repo
+// For example: https://github.com/user/repo.git → ~/.my/sources/repos/github.com/user/repo
 func RepoLocalPath(rawURL string) (string, error) {
 	// Handle SSH-style URLs: git@github.com:user/repo.git
 	if strings.Contains(rawURL, "@") && strings.Contains(rawURL, ":") && !strings.Contains(rawURL, "://") {
@@ -84,10 +67,14 @@ func RepoLocalPath(rawURL string) (string, error) {
 	return filepath.Join(ReposDir(), host, path), nil
 }
 
-var manifestFileNames = []string{"shelf.yaml", "shelf.yml", "shelf.json"}
+// manifestFileNames lists accepted manifest filenames in priority order.
+// New names are tried first; old shelf.* names are kept as fallback for backward compatibility.
+var manifestFileNames = []string{
+	"mycli.yaml", "mycli.yml", "mycli.json",
+	"shelf.yaml", "shelf.yml", "shelf.json",
+}
 
 // detectManifestFile finds the first existing manifest file in repoPath.
-// It tries shelf.yaml, shelf.yml, shelf.json in order.
 // Returns the full path and the filename, or empty strings if none found.
 func detectManifestFile(repoPath string) (string, string) {
 	for _, name := range manifestFileNames {
@@ -99,12 +86,12 @@ func detectManifestFile(repoPath string) (string, string) {
 	return "", ""
 }
 
-// LoadManifest reads and parses the shelf manifest from a repo directory.
-// It looks for shelf.yaml, shelf.yml, or shelf.json (in that order).
-func LoadManifest(repoPath string) (*ShelfManifest, error) {
+// LoadManifest reads and parses the library manifest from a repo directory.
+// It looks for mycli.yaml, mycli.yml, mycli.json, shelf.yaml, shelf.yml, or shelf.json (in that order).
+func LoadManifest(repoPath string) (*Manifest, error) {
 	manifestPath, manifestName := detectManifestFile(repoPath)
 	if manifestPath == "" {
-		return nil, fmt.Errorf("no shelf manifest found (looked for %s)", strings.Join(manifestFileNames, ", "))
+		return nil, fmt.Errorf("no library manifest found (looked for %s)", strings.Join(manifestFileNames, ", "))
 	}
 
 	data, err := os.ReadFile(manifestPath)
@@ -117,60 +104,28 @@ func LoadManifest(repoPath string) (*ShelfManifest, error) {
 		return nil, fmt.Errorf("parse %s: %w", manifestName, err)
 	}
 
-	var m ShelfManifest
+	if err := ValidateManifest(jsonData); err != nil {
+		return nil, fmt.Errorf("validate %s: %w", manifestName, err)
+	}
+
+	var m Manifest
 	if err := json.Unmarshal(jsonData, &m); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", manifestName, err)
 	}
-	if m.ShelfVersion != 1 {
-		return nil, fmt.Errorf("unsupported shelf version: %d (expected 1)", m.ShelfVersion)
-	}
-	if m.Name == "" {
-		return nil, fmt.Errorf("%s missing required field \"name\"", manifestName)
-	}
-	if len(m.Libraries) == 0 {
-		return nil, fmt.Errorf("%s has no libraries", manifestName)
-	}
-	// Collect all library keys to check alias collisions
-	libKeys := make(map[string]bool)
-	for key := range m.Libraries {
-		if !slugPattern.MatchString(key) {
-			return nil, fmt.Errorf("invalid library slug %q: must match %s", key, slugPattern.String())
-		}
-		libKeys[key] = true
-	}
 
-	// Validate library aliases
-	allAliases := make(map[string]string) // alias -> owning library key
-	for key, libDef := range m.Libraries {
-		for _, alias := range libDef.Aliases {
-			if !slugPattern.MatchString(alias) {
-				return nil, fmt.Errorf("invalid library alias %q in %q: must match %s", alias, key, slugPattern.String())
-			}
-			if alias == key {
-				return nil, fmt.Errorf("library alias %q cannot be the same as its own key in %q", alias, key)
-			}
-			if libKeys[alias] {
-				return nil, fmt.Errorf("library alias %q in %q conflicts with library key", alias, key)
-			}
-			if owner, exists := allAliases[alias]; exists {
-				return nil, fmt.Errorf("duplicate library alias %q in %q (already used by %q)", alias, key, owner)
-			}
-			allAliases[alias] = key
-		}
-	}
 	return &m, nil
 }
 
 // DiscoverSpecs walks a library directory and returns valid command specs.
 // It validates each spec using pkg/spec.Parse and checks that the filename matches the slug.
-func DiscoverSpecs(repoPath string, libKey string, libDef LibraryDef) ([]ShelfCatalogItem, error) {
+func DiscoverSpecs(repoPath string, libKey string, libDef LibraryDef) ([]CatalogItem, error) {
 	libDir := filepath.Join(repoPath, libDef.Path)
 	entries, err := os.ReadDir(libDir)
 	if err != nil {
 		return nil, fmt.Errorf("read library dir %q: %w", libDef.Path, err)
 	}
 
-	var items []ShelfCatalogItem
+	var items []CatalogItem
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -200,7 +155,7 @@ func DiscoverSpecs(repoPath string, libKey string, libDef LibraryDef) ([]ShelfCa
 			continue
 		}
 
-		items = append(items, ShelfCatalogItem{
+		items = append(items, CatalogItem{
 			Library:     libKey,
 			Slug:        s.Metadata.Slug,
 			Name:        s.Metadata.Name,
@@ -222,14 +177,4 @@ func specSlugFromFilename(name string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// FindByName looks up a shelf by name in the registry.
-func FindByName(reg *ShelfRegistry, name string) *ShelfEntry {
-	for i := range reg.Shelves {
-		if reg.Shelves[i].Name == name {
-			return &reg.Shelves[i]
-		}
-	}
-	return nil
 }
