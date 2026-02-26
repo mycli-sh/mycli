@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"mycli.sh/cli/internal/auth"
 	"mycli.sh/cli/internal/cache"
