@@ -1,13 +1,13 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"time"
+
+	"resty.dev/v3"
 
 	"mycli.sh/cli/internal/auth"
 	"mycli.sh/cli/internal/config"
@@ -17,27 +17,59 @@ import (
 var Version = "dev"
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	rc         *resty.Client
 	refreshing bool // guards against recursive refresh
 }
 
 func New(baseURL string) *Client {
-	return &Client{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-	}
+	c := &Client{}
+
+	rc := resty.New().
+		SetBaseURL(baseURL).
+		SetTimeout(30*time.Second).
+		SetHeader("Content-Type", "application/json")
+
+	// Request middleware: inject common headers and auth token on every request
+	rc.AddRequestMiddleware(func(_ *resty.Client, req *resty.Request) error {
+		req.SetHeader("User-Agent", "mycli/"+Version)
+		req.SetHeader("X-Device-ID", config.DeviceID())
+		if hostname, err := os.Hostname(); err == nil {
+			req.SetHeader("X-Device-Name", hostname)
+		}
+		if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
+			req.SetHeader("Authorization", "Bearer "+tokens.AccessToken)
+		}
+		return nil
+	})
+
+	// Retry once on 401 after refreshing the token
+	rc.SetRetryCount(1).
+		DisableRetryDefaultConditions().
+		AddRetryConditions(resty.RetryConditionFunc(func(resp *resty.Response, err error) bool {
+			if err != nil || resp == nil {
+				return false
+			}
+			if resp.StatusCode() != http.StatusUnauthorized {
+				return false
+			}
+			if c.refreshing {
+				return false
+			}
+			if c.tryRefresh() {
+				return true // retry — middleware will pick up the new token
+			}
+			// Refresh failed — tokens are invalid, clear them so user can re-login
+			_ = auth.ClearTokens()
+			return false
+		}))
+
+	c.rc = rc
+	return c
 }
 
-// setCommonHeaders sets User-Agent, X-Device-ID, and X-Device-Name on every request.
-func setCommonHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", "mycli/"+Version)
-	req.Header.Set("X-Device-ID", config.DeviceID())
-	if hostname, err := os.Hostname(); err == nil {
-		req.Header.Set("X-Device-Name", hostname)
-	}
+// Close releases resources held by the underlying Resty client.
+func (c *Client) Close() {
+	_ = c.rc.Close()
 }
 
 type APIError struct {
@@ -49,89 +81,30 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
-// execWithAuth performs an HTTP request with automatic auth header injection and
-// transparent 401 retry via token refresh. Returns the response (body already closed),
-// the response body bytes, and any error.
-func (c *Client) execWithAuth(buildReq func() (*http.Request, error)) (*http.Response, []byte, error) {
-	return c.execWithAuthRetry(buildReq, false)
-}
-
-func (c *Client) execWithAuthRetry(buildReq func() (*http.Request, error), isRetry bool) (*http.Response, []byte, error) {
-	req, err := buildReq()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read response: %w", err)
-	}
-
-	// On 401, attempt transparent token refresh (once, non-reentrant)
-	if resp.StatusCode == http.StatusUnauthorized && !isRetry && !c.refreshing {
-		if c.tryRefresh() {
-			return c.execWithAuthRetry(buildReq, true)
-		}
-		// Refresh failed — tokens are invalid, clear them so user can re-login
-		_ = auth.ClearTokens()
-	}
-
-	return resp, body, nil
+type apiErrorEnvelope struct {
+	Error APIError `json:"error"`
 }
 
 func (c *Client) do(method, path string, reqBody any, out any) error {
-	var bodyData []byte
+	req := c.rc.R()
 	if reqBody != nil {
-		var err error
-		bodyData, err = json.Marshal(reqBody)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
-		}
+		req.SetBody(reqBody)
+	}
+	var errEnv apiErrorEnvelope
+	req.SetError(&errEnv)
+	if out != nil {
+		req.SetResult(out)
 	}
 
-	resp, respBody, err := c.execWithAuth(func() (*http.Request, error) {
-		var bodyReader io.Reader
-		if bodyData != nil {
-			bodyReader = bytes.NewReader(bodyData)
-		}
-		req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
-		if err != nil {
-			return nil, fmt.Errorf("create request: %w", err)
-		}
-		setCommonHeaders(req)
-		if reqBody != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		return req, nil
-	})
+	resp, err := req.Execute(method, path)
 	if err != nil {
 		return err
 	}
-
-	if resp.StatusCode >= 400 {
-		var errResp struct {
-			Error APIError `json:"error"`
+	if resp.IsError() {
+		if errEnv.Error.Code != "" {
+			return &errEnv.Error
 		}
-		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error.Code != "" {
-			return &errResp.Error
-		}
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	if out != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, out); err != nil {
-			return fmt.Errorf("unmarshal response: %w", err)
-		}
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode(), resp.String())
 	}
 	return nil
 }
@@ -159,27 +132,6 @@ func (c *Client) tryRefresh() bool {
 	}
 	_ = auth.SaveTokens(tokens)
 	return true
-}
-
-// DoRaw performs an HTTP request and returns the raw response. Used for polling/device flow.
-func (c *Client) DoRaw(method, path string, body any) (*http.Response, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		bodyReader = bytes.NewReader(data)
-	}
-	req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
-	if err != nil {
-		return nil, err
-	}
-	setCommonHeaders(req)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	return c.httpClient.Do(req)
 }
 
 // Auth endpoints
@@ -390,33 +342,30 @@ type CatalogResponse struct {
 }
 
 func (c *Client) GetCatalog(etag string) (*CatalogResponse, error) {
-	resp, body, err := c.execWithAuth(func() (*http.Request, error) {
-		req, err := http.NewRequest("GET", c.baseURL+"/v1/catalog", nil)
-		if err != nil {
-			return nil, err
-		}
-		setCommonHeaders(req)
-		if etag != "" {
-			req.Header.Set("If-None-Match", etag)
-		}
-		return req, nil
-	})
+	req := c.rc.R()
+	if etag != "" {
+		req.SetHeader("If-None-Match", etag)
+	}
+	var catalog CatalogResponse
+	var errEnv apiErrorEnvelope
+	req.SetResult(&catalog).SetError(&errEnv)
+
+	resp, err := req.Execute("GET", "/v1/catalog")
 	if err != nil {
 		return nil, err
 	}
 
-	if resp.StatusCode == http.StatusNotModified {
+	if resp.StatusCode() == http.StatusNotModified {
 		return nil, nil
 	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	if resp.IsError() {
+		if errEnv.Error.Code != "" {
+			return nil, &errEnv.Error
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode(), resp.String())
 	}
 
-	var catalog CatalogResponse
-	if err := json.Unmarshal(body, &catalog); err != nil {
-		return nil, err
-	}
-	catalog.ETag = resp.Header.Get("ETag")
+	catalog.ETag = resp.Header().Get("ETag")
 	return &catalog, nil
 }
 

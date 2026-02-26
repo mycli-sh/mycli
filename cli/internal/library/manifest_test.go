@@ -84,151 +84,52 @@ func TestLoadManifest(t *testing.T) {
 	}
 }
 
-func TestLoadManifestRejectsInvalidVersion(t *testing.T) {
-	dir := t.TempDir()
-	manifest := `{"schemaVersion": 99, "name": "Bad", "libraries": {"ops": {"name": "X", "path": "x"}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
+func TestLoadManifestRejectsInvalid(t *testing.T) {
+	tests := []struct {
+		name     string
+		manifest string
+	}{
+		{
+			name:     "invalid version",
+			manifest: `{"schemaVersion": 99, "name": "Bad", "libraries": {"ops": {"name": "X", "path": "x"}}}`,
+		},
+		{
+			name:     "invalid library slug",
+			manifest: `{"schemaVersion": 1, "name": "Bad", "libraries": {"INVALID": {"name": "X", "path": "x"}}}`,
+		},
+		{
+			name:     "missing name",
+			manifest: `{"schemaVersion": 1, "libraries": {"ops": {"name": "Ops", "path": "ops"}}}`,
+		},
+		{
+			name:     "empty libraries",
+			manifest: `{"schemaVersion": 1, "name": "Empty", "libraries": {}}`,
+		},
+		{
+			name:     "invalid library alias",
+			manifest: `{"schemaVersion": 1, "name": "Bad", "libraries": {"ops": {"name": "Ops", "path": "ops", "aliases": ["INVALID"]}}}`,
+		},
+		{
+			name:     "library alias same as key",
+			manifest: `{"schemaVersion": 1, "name": "Bad", "libraries": {"ops": {"name": "Ops", "path": "ops", "aliases": ["ops"]}}}`,
+		},
+		{
+			name:     "library alias conflicts with other key",
+			manifest: `{"schemaVersion": 1, "name": "Bad", "libraries": {"ops": {"name": "Ops", "path": "ops", "aliases": ["tools"]}, "tools": {"name": "Tools", "path": "tools"}}}`,
+		},
 	}
 
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for invalid manifest version")
-	}
-}
-
-func TestLoadManifestRejectsInvalidLibrarySlug(t *testing.T) {
-	dir := t.TempDir()
-	manifest := `{"schemaVersion": 1, "name": "Bad", "libraries": {"INVALID": {"name": "X", "path": "x"}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for invalid library slug")
-	}
-}
-
-func TestLoadManifestRejectsMissingName(t *testing.T) {
-	dir := t.TempDir()
-	manifest := `{"schemaVersion": 1, "libraries": {"ops": {"name": "Ops", "path": "ops"}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for missing name")
-	}
-}
-
-func TestLoadManifestRejectsEmptyLibraries(t *testing.T) {
-	dir := t.TempDir()
-	manifest := `{"schemaVersion": 1, "name": "Empty", "libraries": {}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for empty libraries")
-	}
-}
-
-func TestDiscoverSpecs(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create library directory with a valid spec
-	opsDir := filepath.Join(dir, "ops")
-	if err := os.MkdirAll(opsDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(opsDir, "deploy.json"), []byte(validSpecJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	libDef := LibraryDef{Name: "Operations", Path: "ops"}
-	items, err := DiscoverSpecs(dir, "ops", libDef)
-	if err != nil {
-		t.Fatalf("DiscoverSpecs: %v", err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(items))
-	}
-	if items[0].Slug != "deploy" {
-		t.Errorf("expected slug 'deploy', got %q", items[0].Slug)
-	}
-	if items[0].Library != "ops" {
-		t.Errorf("expected library 'ops', got %q", items[0].Library)
-	}
-	if items[0].Name != "Deploy" {
-		t.Errorf("expected name 'Deploy', got %q", items[0].Name)
-	}
-}
-
-func TestDiscoverSpecsSkipsMismatchedSlug(t *testing.T) {
-	dir := t.TempDir()
-
-	opsDir := filepath.Join(dir, "ops")
-	if err := os.MkdirAll(opsDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	// File named "wrong.json" but spec slug is "deploy"
-	if err := os.WriteFile(filepath.Join(opsDir, "wrong.json"), []byte(validSpecJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	libDef := LibraryDef{Name: "Operations", Path: "ops"}
-	items, err := DiscoverSpecs(dir, "ops", libDef)
-	if err != nil {
-		t.Fatalf("DiscoverSpecs: %v", err)
-	}
-	if len(items) != 0 {
-		t.Errorf("expected 0 items (mismatched slug), got %d", len(items))
-	}
-}
-
-func TestDiscoverSpecsSkipsInvalidSpec(t *testing.T) {
-	dir := t.TempDir()
-
-	opsDir := filepath.Join(dir, "ops")
-	if err := os.MkdirAll(opsDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	// Invalid spec JSON
-	if err := os.WriteFile(filepath.Join(opsDir, "bad.json"), []byte(`{"not": "a spec"}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	libDef := LibraryDef{Name: "Operations", Path: "ops"}
-	items, err := DiscoverSpecs(dir, "ops", libDef)
-	if err != nil {
-		t.Fatalf("DiscoverSpecs: %v", err)
-	}
-	if len(items) != 0 {
-		t.Errorf("expected 0 items (invalid spec), got %d", len(items))
-	}
-}
-
-func TestDiscoverSpecsSkipsDirectories(t *testing.T) {
-	dir := t.TempDir()
-
-	opsDir := filepath.Join(dir, "ops")
-	if err := os.MkdirAll(filepath.Join(opsDir, "subdir"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(opsDir, "deploy.json"), []byte(validSpecJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	libDef := LibraryDef{Name: "Operations", Path: "ops"}
-	items, err := DiscoverSpecs(dir, "ops", libDef)
-	if err != nil {
-		t.Fatalf("DiscoverSpecs: %v", err)
-	}
-	if len(items) != 1 {
-		t.Errorf("expected 1 item (skipping subdir), got %d", len(items))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(tc.manifest), 0644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadManifest(dir)
+			if err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+		})
 	}
 }
 
@@ -247,54 +148,100 @@ steps:
     run: echo deploying {{.args.service}}
 `
 
-func TestDiscoverSpecsYAML(t *testing.T) {
-	dir := t.TempDir()
+func TestDiscoverSpecs(t *testing.T) {
+	tests := []struct {
+		name      string
+		filename  string
+		content   string
+		mkSubdir  bool
+		wantCount int
+		wantSlug  string
+		wantLib   string
+		wantName  string
+	}{
+		{
+			name:      "valid JSON spec",
+			filename:  "deploy.json",
+			content:   validSpecJSON,
+			wantCount: 1,
+			wantSlug:  "deploy",
+			wantLib:   "ops",
+			wantName:  "Deploy",
+		},
+		{
+			name:      "skips mismatched slug",
+			filename:  "wrong.json",
+			content:   validSpecJSON,
+			wantCount: 0,
+		},
+		{
+			name:      "skips invalid spec",
+			filename:  "bad.json",
+			content:   `{"not": "a spec"}`,
+			wantCount: 0,
+		},
+		{
+			name:      "skips directories",
+			filename:  "deploy.json",
+			content:   validSpecJSON,
+			mkSubdir:  true,
+			wantCount: 1,
+			wantSlug:  "deploy",
+		},
+		{
+			name:      "YAML extension",
+			filename:  "deploy.yaml",
+			content:   validSpecYAML,
+			wantCount: 1,
+			wantSlug:  "deploy",
+			wantLib:   "ops",
+		},
+		{
+			name:      "YML extension",
+			filename:  "deploy.yml",
+			content:   validSpecYAML,
+			wantCount: 1,
+			wantSlug:  "deploy",
+		},
+	}
 
-	opsDir := filepath.Join(dir, "ops")
-	if err := os.MkdirAll(opsDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(opsDir, "deploy.yaml"), []byte(validSpecYAML), 0644); err != nil {
-		t.Fatal(err)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			opsDir := filepath.Join(dir, "ops")
+			if err := os.MkdirAll(opsDir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if tc.mkSubdir {
+				if err := os.MkdirAll(filepath.Join(opsDir, "subdir"), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(opsDir, tc.filename), []byte(tc.content), 0644); err != nil {
+				t.Fatal(err)
+			}
 
-	libDef := LibraryDef{Name: "Operations", Path: "ops"}
-	items, err := DiscoverSpecs(dir, "ops", libDef)
-	if err != nil {
-		t.Fatalf("DiscoverSpecs: %v", err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(items))
-	}
-	if items[0].Slug != "deploy" {
-		t.Errorf("expected slug 'deploy', got %q", items[0].Slug)
-	}
-	if items[0].Library != "ops" {
-		t.Errorf("expected library 'ops', got %q", items[0].Library)
-	}
-}
-
-func TestDiscoverSpecsYMLExtension(t *testing.T) {
-	dir := t.TempDir()
-
-	opsDir := filepath.Join(dir, "ops")
-	if err := os.MkdirAll(opsDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(opsDir, "deploy.yml"), []byte(validSpecYAML), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	libDef := LibraryDef{Name: "Operations", Path: "ops"}
-	items, err := DiscoverSpecs(dir, "ops", libDef)
-	if err != nil {
-		t.Fatalf("DiscoverSpecs: %v", err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(items))
-	}
-	if items[0].Slug != "deploy" {
-		t.Errorf("expected slug 'deploy', got %q", items[0].Slug)
+			libDef := LibraryDef{Name: "Operations", Path: "ops"}
+			items, err := DiscoverSpecs(dir, "ops", libDef)
+			if err != nil {
+				t.Fatalf("DiscoverSpecs: %v", err)
+			}
+			if len(items) != tc.wantCount {
+				t.Fatalf("expected %d items, got %d", tc.wantCount, len(items))
+			}
+			if tc.wantCount == 0 {
+				return
+			}
+			if tc.wantSlug != "" && items[0].Slug != tc.wantSlug {
+				t.Errorf("expected slug %q, got %q", tc.wantSlug, items[0].Slug)
+			}
+			if tc.wantLib != "" && items[0].Library != tc.wantLib {
+				t.Errorf("expected library %q, got %q", tc.wantLib, items[0].Library)
+			}
+			if tc.wantName != "" && items[0].Name != tc.wantName {
+				t.Errorf("expected name %q, got %q", tc.wantName, items[0].Name)
+			}
+		})
 	}
 }
 
@@ -370,48 +317,6 @@ libraries:
 	}
 	if lib.Aliases[0] != "k" || lib.Aliases[1] != "kube" {
 		t.Errorf("unexpected aliases: %v", lib.Aliases)
-	}
-}
-
-func TestLoadManifestRejectsInvalidLibraryAlias(t *testing.T) {
-	dir := t.TempDir()
-
-	manifest := `{"schemaVersion": 1, "name": "Bad", "libraries": {"ops": {"name": "Ops", "path": "ops", "aliases": ["INVALID"]}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for invalid library alias pattern")
-	}
-}
-
-func TestLoadManifestRejectsLibraryAliasSameAsKey(t *testing.T) {
-	dir := t.TempDir()
-
-	manifest := `{"schemaVersion": 1, "name": "Bad", "libraries": {"ops": {"name": "Ops", "path": "ops", "aliases": ["ops"]}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for library alias same as its own key")
-	}
-}
-
-func TestLoadManifestRejectsLibraryAliasConflictsWithOtherKey(t *testing.T) {
-	dir := t.TempDir()
-
-	manifest := `{"schemaVersion": 1, "name": "Bad", "libraries": {"ops": {"name": "Ops", "path": "ops", "aliases": ["tools"]}, "tools": {"name": "Tools", "path": "tools"}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mycli.json"), []byte(manifest), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadManifest(dir)
-	if err == nil {
-		t.Fatal("expected error for library alias conflicting with another library key")
 	}
 }
 

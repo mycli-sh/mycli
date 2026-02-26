@@ -24,6 +24,7 @@ func newWhoamiCmd() *cobra.Command {
 				return err
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			user, err := c.GetMe()
 			if err != nil {

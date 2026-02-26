@@ -16,43 +16,59 @@ const validSpecJSON = `{
   "steps": [{"name": "deploy", "run": "echo deploying {{.args.service}} to {{.args.env}}"}]
 }`
 
+func assertValidSpec(t *testing.T, s *CommandSpec) {
+	t.Helper()
+	if s.SchemaVersion != 1 {
+		t.Errorf("expected schemaVersion 1, got %d", s.SchemaVersion)
+	}
+	if s.Kind != "command" {
+		t.Errorf("expected kind 'command', got %q", s.Kind)
+	}
+	if s.Metadata.Name != "Deploy" {
+		t.Errorf("expected metadata.name 'Deploy', got %q", s.Metadata.Name)
+	}
+	if s.Metadata.Slug != "deploy" {
+		t.Errorf("expected metadata.slug 'deploy', got %q", s.Metadata.Slug)
+	}
+	if s.Metadata.Description != "Deploy a service" {
+		t.Errorf("expected metadata.description 'Deploy a service', got %q", s.Metadata.Description)
+	}
+	if len(s.Args.Positional) != 1 {
+		t.Fatalf("expected 1 positional arg, got %d", len(s.Args.Positional))
+	}
+	if s.Args.Positional[0].Name != "service" {
+		t.Errorf("expected positional arg name 'service', got %q", s.Args.Positional[0].Name)
+	}
+	if len(s.Args.Flags) != 1 {
+		t.Fatalf("expected 1 flag, got %d", len(s.Args.Flags))
+	}
+	if s.Args.Flags[0].Name != "env" {
+		t.Errorf("expected flag name 'env', got %q", s.Args.Flags[0].Name)
+	}
+	if len(s.Steps) != 1 {
+		t.Fatalf("expected 1 step, got %d", len(s.Steps))
+	}
+	if s.Steps[0].Name != "deploy" {
+		t.Errorf("expected step name 'deploy', got %q", s.Steps[0].Name)
+	}
+}
+
 func TestParseValidSpec(t *testing.T) {
-	spec, err := Parse([]byte(validSpecJSON))
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"JSON", validSpecJSON},
+		{"YAML", validSpecYAML},
 	}
-	if spec.SchemaVersion != 1 {
-		t.Errorf("expected schemaVersion 1, got %d", spec.SchemaVersion)
-	}
-	if spec.Kind != "command" {
-		t.Errorf("expected kind 'command', got %q", spec.Kind)
-	}
-	if spec.Metadata.Name != "Deploy" {
-		t.Errorf("expected metadata.name 'Deploy', got %q", spec.Metadata.Name)
-	}
-	if spec.Metadata.Slug != "deploy" {
-		t.Errorf("expected metadata.slug 'deploy', got %q", spec.Metadata.Slug)
-	}
-	if spec.Metadata.Description != "Deploy a service" {
-		t.Errorf("expected metadata.description 'Deploy a service', got %q", spec.Metadata.Description)
-	}
-	if len(spec.Args.Positional) != 1 {
-		t.Fatalf("expected 1 positional arg, got %d", len(spec.Args.Positional))
-	}
-	if spec.Args.Positional[0].Name != "service" {
-		t.Errorf("expected positional arg name 'service', got %q", spec.Args.Positional[0].Name)
-	}
-	if len(spec.Args.Flags) != 1 {
-		t.Fatalf("expected 1 flag, got %d", len(spec.Args.Flags))
-	}
-	if spec.Args.Flags[0].Name != "env" {
-		t.Errorf("expected flag name 'env', got %q", spec.Args.Flags[0].Name)
-	}
-	if len(spec.Steps) != 1 {
-		t.Fatalf("expected 1 step, got %d", len(spec.Steps))
-	}
-	if spec.Steps[0].Name != "deploy" {
-		t.Errorf("expected step name 'deploy', got %q", spec.Steps[0].Name)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := Parse([]byte(tc.input))
+			if err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			assertValidSpec(t, s)
+		})
 	}
 }
 
@@ -244,49 +260,77 @@ func TestSchemaRejectsEmptyShort(t *testing.T) {
 	}
 }
 
-func TestSchemaRejectsInvalidShell(t *testing.T) {
-	j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"shell":"/usr/local/evil"},"steps":[{"name":"s","run":"echo"}]}`
-	if err := Validate([]byte(j)); err == nil {
-		t.Fatal("expected error for invalid shell")
+func TestSchemaShellValidation(t *testing.T) {
+	tests := []struct {
+		shell   string
+		wantErr bool
+	}{
+		{"/usr/local/evil", true},
+		{"/bin/sh", false},
+		{"/bin/bash", false},
+		{"/bin/zsh", false},
+		{"/usr/bin/env", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.shell, func(t *testing.T) {
+			j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"shell":"` + tc.shell + `"},"steps":[{"name":"s","run":"echo"}]}`
+			err := Validate([]byte(j))
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for shell %q", tc.shell)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for shell %q: %v", tc.shell, err)
+			}
+		})
 	}
 }
 
-func TestSchemaAcceptsValidShells(t *testing.T) {
-	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/zsh", "/usr/bin/env"} {
-		j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"shell":"` + shell + `"},"steps":[{"name":"s","run":"echo"}]}`
-		if err := Validate([]byte(j)); err != nil {
-			t.Errorf("expected no error for shell %q, got: %v", shell, err)
-		}
+func TestSchemaTimeoutValidation(t *testing.T) {
+	tests := []struct {
+		timeout string
+		wantErr bool
+	}{
+		{"30", true},
+		{"30s", false},
+		{"5m", false},
+		{"1h", false},
+		{"500ms", false},
+		{"0s", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.timeout, func(t *testing.T) {
+			j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"timeout":"` + tc.timeout + `"},"steps":[{"name":"s","run":"echo"}]}`
+			err := Validate([]byte(j))
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for timeout %q", tc.timeout)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for timeout %q: %v", tc.timeout, err)
+			}
+		})
 	}
 }
 
-func TestSchemaRejectsInvalidTimeout(t *testing.T) {
-	j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"timeout":"30"},"steps":[{"name":"s","run":"echo"}]}`
-	if err := Validate([]byte(j)); err == nil {
-		t.Fatal("expected error for timeout without unit")
+func TestSchemaEnvVarValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		wantErr bool
+	}{
+		{"invalid key with space", `{"invalid key":"v"}`, true},
+		{"valid keys", `{"MY_VAR":"v","_foo":"v","PATH":"v"}`, false},
 	}
-}
-
-func TestSchemaAcceptsValidTimeout(t *testing.T) {
-	for _, timeout := range []string{"30s", "5m", "1h", "500ms", "0s"} {
-		j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"timeout":"` + timeout + `"},"steps":[{"name":"s","run":"echo"}]}`
-		if err := Validate([]byte(j)); err != nil {
-			t.Errorf("expected no error for timeout %q, got: %v", timeout, err)
-		}
-	}
-}
-
-func TestSchemaRejectsInvalidEnvVarKey(t *testing.T) {
-	j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"env":{"invalid key":"v"}},"steps":[{"name":"s","run":"echo"}]}`
-	if err := Validate([]byte(j)); err == nil {
-		t.Fatal("expected error for env var key with space")
-	}
-}
-
-func TestSchemaAcceptsValidEnvVarKeys(t *testing.T) {
-	j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"env":{"MY_VAR":"v","_foo":"v","PATH":"v"}},"steps":[{"name":"s","run":"echo"}]}`
-	if err := Validate([]byte(j)); err != nil {
-		t.Fatalf("expected no error for valid env var keys, got: %v", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"defaults":{"env":` + tc.env + `},"steps":[{"name":"s","run":"echo"}]}`
+			err := Validate([]byte(j))
+			if tc.wantErr && err == nil {
+				t.Fatal("expected error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 
@@ -343,39 +387,41 @@ func TestSemanticAcceptsUniqueArgs(t *testing.T) {
 
 // --- Alias tests ---
 
-func TestParseSpecWithAliases(t *testing.T) {
-	j := `{
-		"schemaVersion": 1,
-		"kind": "command",
-		"metadata": {"name": "Deploy", "slug": "deploy", "aliases": ["dep", "d"]},
-		"steps": [{"name": "deploy", "run": "echo deploy"}]
-	}`
-	s, err := Parse([]byte(j))
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(s.Metadata.Aliases) != 2 {
-		t.Fatalf("expected 2 aliases, got %d", len(s.Metadata.Aliases))
-	}
-	if s.Metadata.Aliases[0] != "dep" || s.Metadata.Aliases[1] != "d" {
-		t.Errorf("unexpected aliases: %v", s.Metadata.Aliases)
-	}
-}
+func TestParseSpecAliases(t *testing.T) {
+	t.Run("with aliases", func(t *testing.T) {
+		j := `{
+			"schemaVersion": 1,
+			"kind": "command",
+			"metadata": {"name": "Deploy", "slug": "deploy", "aliases": ["dep", "d"]},
+			"steps": [{"name": "deploy", "run": "echo deploy"}]
+		}`
+		s, err := Parse([]byte(j))
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if len(s.Metadata.Aliases) != 2 {
+			t.Fatalf("expected 2 aliases, got %d", len(s.Metadata.Aliases))
+		}
+		if s.Metadata.Aliases[0] != "dep" || s.Metadata.Aliases[1] != "d" {
+			t.Errorf("unexpected aliases: %v", s.Metadata.Aliases)
+		}
+	})
 
-func TestParseSpecWithoutAliases(t *testing.T) {
-	j := `{
-		"schemaVersion": 1,
-		"kind": "command",
-		"metadata": {"name": "Deploy", "slug": "deploy"},
-		"steps": [{"name": "deploy", "run": "echo deploy"}]
-	}`
-	s, err := Parse([]byte(j))
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(s.Metadata.Aliases) != 0 {
-		t.Errorf("expected no aliases, got %v", s.Metadata.Aliases)
-	}
+	t.Run("without aliases", func(t *testing.T) {
+		j := `{
+			"schemaVersion": 1,
+			"kind": "command",
+			"metadata": {"name": "Deploy", "slug": "deploy"},
+			"steps": [{"name": "deploy", "run": "echo deploy"}]
+		}`
+		s, err := Parse([]byte(j))
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if len(s.Metadata.Aliases) != 0 {
+			t.Errorf("expected no aliases, got %v", s.Metadata.Aliases)
+		}
+	})
 }
 
 func TestSchemaRejectsInvalidAliasPattern(t *testing.T) {
@@ -408,60 +454,48 @@ func TestSemanticAcceptsValidAliases(t *testing.T) {
 
 // --- Dependencies tests ---
 
-func TestParseSpecWithDependencies(t *testing.T) {
-	j := `{
-		"schemaVersion": 1,
-		"kind": "command",
-		"metadata": {"name": "Deploy", "slug": "deploy"},
-		"dependencies": ["kubectl", "jq", "fzf"],
-		"steps": [{"name": "deploy", "run": "echo deploy"}]
-	}`
-	s, err := Parse([]byte(j))
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(s.Dependencies) != 3 {
-		t.Fatalf("expected 3 dependencies, got %d", len(s.Dependencies))
-	}
-	if s.Dependencies[0] != "kubectl" || s.Dependencies[1] != "jq" || s.Dependencies[2] != "fzf" {
-		t.Errorf("unexpected dependencies: %v", s.Dependencies)
-	}
-}
+func TestParseSpecDependencies(t *testing.T) {
+	t.Run("with dependencies", func(t *testing.T) {
+		j := `{
+			"schemaVersion": 1,
+			"kind": "command",
+			"metadata": {"name": "Deploy", "slug": "deploy"},
+			"dependencies": ["kubectl", "jq", "fzf"],
+			"steps": [{"name": "deploy", "run": "echo deploy"}]
+		}`
+		s, err := Parse([]byte(j))
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if len(s.Dependencies) != 3 {
+			t.Fatalf("expected 3 dependencies, got %d", len(s.Dependencies))
+		}
+		if s.Dependencies[0] != "kubectl" || s.Dependencies[1] != "jq" || s.Dependencies[2] != "fzf" {
+			t.Errorf("unexpected dependencies: %v", s.Dependencies)
+		}
+	})
 
-func TestParseSpecWithoutDependencies(t *testing.T) {
-	j := `{
-		"schemaVersion": 1,
-		"kind": "command",
-		"metadata": {"name": "Deploy", "slug": "deploy"},
-		"steps": [{"name": "deploy", "run": "echo deploy"}]
-	}`
-	s, err := Parse([]byte(j))
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(s.Dependencies) != 0 {
-		t.Errorf("expected no dependencies, got %v", s.Dependencies)
-	}
+	t.Run("without dependencies", func(t *testing.T) {
+		j := `{
+			"schemaVersion": 1,
+			"kind": "command",
+			"metadata": {"name": "Deploy", "slug": "deploy"},
+			"steps": [{"name": "deploy", "run": "echo deploy"}]
+		}`
+		s, err := Parse([]byte(j))
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if len(s.Dependencies) != 0 {
+			t.Errorf("expected no dependencies, got %v", s.Dependencies)
+		}
+	})
 }
 
 func TestSchemaRejectsDuplicateDependencies(t *testing.T) {
 	j := `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"dependencies":["kubectl","kubectl"],"steps":[{"name":"s","run":"echo"}]}`
 	if err := Validate([]byte(j)); err == nil {
 		t.Fatal("expected error for duplicate dependencies (uniqueItems)")
-	}
-}
-
-func TestSemanticRejectsDuplicateDependencies(t *testing.T) {
-	// This tests the semantic layer (belt-and-suspenders with uniqueItems)
-	s := &CommandSpec{
-		SchemaVersion: 1,
-		Kind:          "command",
-		Metadata:      Metadata{Name: "x", Slug: "x"},
-		Dependencies:  []string{"kubectl", "kubectl"},
-		Steps:         []Step{{Name: "s", Run: "echo"}},
-	}
-	if err := validateSemantics(s); err == nil {
-		t.Fatal("expected error for duplicate dependency names")
 	}
 }
 
@@ -493,34 +527,6 @@ steps:
   - name: deploy
     run: echo deploying {{.args.service}} to {{.args.env}}
 `
-
-func TestParseValidYAML(t *testing.T) {
-	s, err := Parse([]byte(validSpecYAML))
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if s.SchemaVersion != 1 {
-		t.Errorf("expected schemaVersion 1, got %d", s.SchemaVersion)
-	}
-	if s.Kind != "command" {
-		t.Errorf("expected kind 'command', got %q", s.Kind)
-	}
-	if s.Metadata.Name != "Deploy" {
-		t.Errorf("expected name 'Deploy', got %q", s.Metadata.Name)
-	}
-	if s.Metadata.Slug != "deploy" {
-		t.Errorf("expected slug 'deploy', got %q", s.Metadata.Slug)
-	}
-	if len(s.Args.Positional) != 1 || s.Args.Positional[0].Name != "service" {
-		t.Errorf("unexpected positional args: %+v", s.Args.Positional)
-	}
-	if len(s.Args.Flags) != 1 || s.Args.Flags[0].Name != "env" {
-		t.Errorf("unexpected flags: %+v", s.Args.Flags)
-	}
-	if len(s.Steps) != 1 || s.Steps[0].Name != "deploy" {
-		t.Errorf("unexpected steps: %+v", s.Steps)
-	}
-}
 
 func TestParseYAMLWithComments(t *testing.T) {
 	yaml := `

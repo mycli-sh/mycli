@@ -44,6 +44,7 @@ func newPushCmd() *cobra.Command {
 				return err
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			if dir != "" {
 				return pushDir(c, dir, message)

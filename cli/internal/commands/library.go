@@ -57,6 +57,7 @@ func newLibrarySearchCmd() *cobra.Command {
 				return err
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			resp, err := c.SearchPublicLibraries(args[0], 20, 0)
 			if err != nil {
@@ -126,6 +127,7 @@ func installRegistryLibrary(identifier string) error {
 		return err
 	}
 	c := client.New(resolveAPIURL(cfg))
+	defer c.Close()
 
 	// Parse owner/slug
 	owner, slug := parseOwnerSlug(identifier)
@@ -218,6 +220,7 @@ func newLibraryUninstallCmd() *cobra.Command {
 				cfg, err := config.Load()
 				if err == nil {
 					c := client.New(resolveAPIURL(cfg))
+					defer c.Close()
 					_ = c.UninstallLibrary(entry.Owner, entry.Slug)
 				}
 			}
@@ -354,6 +357,7 @@ manifest are released under the same tag. Requires login.`,
 				return err
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			// Detect git remote URL for metadata
 			var gitURL string
@@ -477,6 +481,7 @@ func newLibraryInfoCmd() *cobra.Command {
 				return fmt.Errorf("library %q not found", identifier)
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			detail, err := c.GetPublicLibrary(owner, slug)
 			if err != nil {
@@ -527,6 +532,7 @@ func newLibrarySyncCmd() *cobra.Command {
 				return err
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			fmt.Println("Syncing...")
 			fetched, err := cache.Sync(c, true)

@@ -799,6 +799,7 @@ func newLibraryExploreCmd() *cobra.Command {
 				return err
 			}
 			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
 
 			m := exploreModel{
 				apiClient:     c,

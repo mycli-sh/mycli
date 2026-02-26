@@ -21,6 +21,7 @@ func newLogoutCmd() *cobra.Command {
 				cfg, _ := config.Load()
 				if cfg != nil {
 					c := client.New(resolveAPIURL(cfg))
+					defer c.Close()
 					_ = c.Logout(tokens.RefreshToken) // ignore errors (e.g. offline)
 				}
 			}

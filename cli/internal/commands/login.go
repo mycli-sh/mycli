@@ -35,6 +35,7 @@ func newLoginCmd() *cobra.Command {
 			}
 			apiURL := resolveAPIURL(cfg)
 			c := client.New(apiURL)
+			defer c.Close()
 
 			// Prompt for email
 			fmt.Print("Enter your email: ")
