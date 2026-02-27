@@ -42,7 +42,7 @@ Key data flow:
 
 ## API Configuration
 
-The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JWT_SECRET`, `BASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`. See `api/internal/config/config.go` for defaults.
+The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JWT_SECRET`, `BASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `ALLOWED_ORIGINS`, `WEB_BASE_URL`, `SYSTEM_ADMIN_EMAILS`. See `api/internal/config/config.go` for defaults.
 
 ## Conventions
 

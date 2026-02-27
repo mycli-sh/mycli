@@ -15,6 +15,9 @@ The mycli API server reads all configuration from environment variables.
 | `BASE_URL` | `http://localhost:8080` | Public base URL (used in magic link emails) |
 | `RESEND_API_KEY` | _(empty)_ | Resend API key for sending emails. When unset, emails are printed to stdout |
 | `EMAIL_FROM` | `mycli@updates.mycli.sh` | Sender address for emails |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS allowed origins |
+| `WEB_BASE_URL` | `http://localhost:5173` | Web frontend base URL |
+| `SYSTEM_ADMIN_EMAILS` | _(empty)_ | Comma-separated system admin emails |
 
 ## Development setup
 
