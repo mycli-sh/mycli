@@ -124,6 +124,3 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO libraries (id, owner_id, slug, name, description, is_public)
 VALUES ('00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000001', 'kubernetes', 'Kubernetes', 'Commands for Kubernetes cluster management', true)
 ON CONFLICT (id) DO NOTHING;
-
--- Commands are now imported via `my library release` from the mycli-libraries repo.
--- See scripts/dev-reset.sh for the dev workflow.
