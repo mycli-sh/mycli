@@ -21,15 +21,16 @@ func NewCatalogHandler(s store.CatalogStore) *CatalogHandler {
 }
 
 type catalogItem struct {
-	CommandID    uuid.UUID `json:"command_id"`
-	Slug         string    `json:"slug"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Version      int       `json:"version"`
-	SpecHash     string    `json:"spec_hash"`
-	UpdatedAt    string    `json:"updated_at"`
-	Library      string    `json:"library,omitempty"`
-	LibraryOwner string    `json:"library_owner,omitempty"`
+	CommandID      uuid.UUID `json:"command_id"`
+	Slug           string    `json:"slug"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	Version        int       `json:"version"`
+	SpecHash       string    `json:"spec_hash"`
+	UpdatedAt      string    `json:"updated_at"`
+	Library        string    `json:"library,omitempty"`
+	LibraryOwner   string    `json:"library_owner,omitempty"`
+	LibraryAliases []string  `json:"library_aliases,omitempty"`
 }
 
 func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {
@@ -87,15 +88,16 @@ func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				items = append(items, catalogItem{
-					CommandID:    lc.CommandID,
-					Slug:         lc.Slug,
-					Name:         lc.Name,
-					Description:  lc.Description,
-					Version:      latest.Version,
-					SpecHash:     latest.SpecHash,
-					UpdatedAt:    lc.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-					Library:      lib.Slug,
-					LibraryOwner: ownerName,
+					CommandID:      lc.CommandID,
+					Slug:           lc.Slug,
+					Name:           lc.Name,
+					Description:    lc.Description,
+					Version:        latest.Version,
+					SpecHash:       latest.SpecHash,
+					UpdatedAt:      lc.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+					Library:        lib.Slug,
+					LibraryOwner:   ownerName,
+					LibraryAliases: lib.Aliases,
 				})
 			}
 		}

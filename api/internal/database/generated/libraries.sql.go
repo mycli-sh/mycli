@@ -13,14 +13,15 @@ import (
 )
 
 const createOrUpdateLibrary = `-- name: CreateOrUpdateLibrary :one
-INSERT INTO libraries (owner_id, slug, name, description, git_url, is_public)
-VALUES ($1, $2, $3, $4, $5, true)
+INSERT INTO libraries (owner_id, slug, name, description, git_url, aliases, is_public)
+VALUES ($1, $2, $3, $4, $5, $6, true)
 ON CONFLICT (owner_id, slug)
 DO UPDATE SET name = EXCLUDED.name,
               description = EXCLUDED.description,
               git_url = EXCLUDED.git_url,
+              aliases = EXCLUDED.aliases,
               updated_at = now()
-RETURNING id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at
+RETURNING id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at, aliases
 `
 
 type CreateOrUpdateLibraryParams struct {
@@ -29,6 +30,7 @@ type CreateOrUpdateLibraryParams struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	GitUrl      *string    `json:"git_url"`
+	Aliases     []string   `json:"aliases"`
 }
 
 func (q *Queries) CreateOrUpdateLibrary(ctx context.Context, arg CreateOrUpdateLibraryParams) (Library, error) {
@@ -38,6 +40,7 @@ func (q *Queries) CreateOrUpdateLibrary(ctx context.Context, arg CreateOrUpdateL
 		arg.Name,
 		arg.Description,
 		arg.GitUrl,
+		arg.Aliases,
 	)
 	var i Library
 	err := row.Scan(
@@ -52,6 +55,7 @@ func (q *Queries) CreateOrUpdateLibrary(ctx context.Context, arg CreateOrUpdateL
 		&i.LatestVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Aliases,
 	)
 	return i, err
 }
@@ -66,7 +70,7 @@ func (q *Queries) DecrementInstallCount(ctx context.Context, id uuid.UUID) error
 }
 
 const getInstalledLibraries = `-- name: GetInstalledLibraries :many
-SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at
+SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at, l.aliases
 FROM libraries l
 JOIN library_installations li ON li.library_id = l.id
 WHERE li.user_id = $1
@@ -94,6 +98,7 @@ func (q *Queries) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) (
 			&i.LatestVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Aliases,
 		); err != nil {
 			return nil, err
 		}
@@ -106,7 +111,7 @@ func (q *Queries) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) (
 }
 
 const getLibraryByOwnerSlug = `-- name: GetLibraryByOwnerSlug :one
-SELECT id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at
+SELECT id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at, aliases
 FROM libraries WHERE owner_id = $1 AND slug = $2
 `
 
@@ -130,12 +135,13 @@ func (q *Queries) GetLibraryByOwnerSlug(ctx context.Context, arg GetLibraryByOwn
 		&i.LatestVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Aliases,
 	)
 	return i, err
 }
 
 const getLibraryByOwnerUsernameAndSlug = `-- name: GetLibraryByOwnerUsernameAndSlug :one
-SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at
+SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at, l.aliases
 FROM libraries l
 JOIN users u ON u.id = l.owner_id
 WHERE u.username = $1
@@ -163,12 +169,13 @@ func (q *Queries) GetLibraryByOwnerUsernameAndSlug(ctx context.Context, arg GetL
 		&i.LatestVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Aliases,
 	)
 	return i, err
 }
 
 const getLibraryBySlug = `-- name: GetLibraryBySlug :one
-SELECT id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at
+SELECT id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at, aliases
 FROM libraries WHERE slug = $1
 `
 
@@ -187,6 +194,7 @@ func (q *Queries) GetLibraryBySlug(ctx context.Context, slug string) (Library, e
 		&i.LatestVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Aliases,
 	)
 	return i, err
 }
@@ -285,7 +293,7 @@ func (q *Queries) ListCommandsByLibrary(ctx context.Context, libraryID *uuid.UUI
 }
 
 const listLibraries = `-- name: ListLibraries :many
-SELECT id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at
+SELECT id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at, aliases
 FROM libraries ORDER BY name ASC
 `
 
@@ -310,6 +318,7 @@ func (q *Queries) ListLibraries(ctx context.Context) ([]Library, error) {
 			&i.LatestVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Aliases,
 		); err != nil {
 			return nil, err
 		}

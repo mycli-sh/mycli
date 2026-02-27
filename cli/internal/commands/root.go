@@ -35,10 +35,10 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newSourceCmd())
 
 	// Register dynamic library commands from cached catalog
-	registeredSlugs := registerAPILibraryCommands(cmd)
+	registeredSlugs, registeredAliases := registerAPILibraryCommands(cmd)
 
 	// Register git library commands (API libraries take precedence)
-	registerGitLibraryCommands(cmd, registeredSlugs)
+	registerGitLibraryCommands(cmd, registeredSlugs, registeredAliases)
 
 	return cmd
 }
@@ -51,13 +51,15 @@ func resolveAPIURL(cfg *config.Config) string {
 }
 
 // registerAPILibraryCommands registers library commands from the cached API catalog.
-// Returns a map of library slug -> set of command slugs so git library commands can merge at the command level.
-func registerAPILibraryCommands(root *cobra.Command) map[string]map[string]bool {
+// Returns a map of library slug -> set of command slugs so git library commands can merge at the command level,
+// and a set of registered aliases (including library slugs) for collision detection.
+func registerAPILibraryCommands(root *cobra.Command) (map[string]map[string]bool, map[string]bool) {
 	registered := make(map[string]map[string]bool)
+	registeredAliases := make(map[string]bool)
 
 	catalog, err := cache.GetCatalog()
 	if err != nil || catalog == nil {
-		return registered
+		return registered, registeredAliases
 	}
 
 	// Group catalog items by owner/slug key
@@ -87,10 +89,27 @@ func registerAPILibraryCommands(root *cobra.Command) map[string]map[string]bool 
 		}
 
 		registered[displayKey] = make(map[string]bool)
+		registeredAliases[displayKey] = true
 
 		libCmd := &cobra.Command{
 			Use:   displayKey,
 			Short: fmt.Sprintf("Commands from the %s library", slug),
+		}
+
+		// Apply library-level aliases from the catalog (use the first item's LibraryAliases)
+		if len(items) > 0 {
+			var validAliases []string
+			for _, alias := range items[0].LibraryAliases {
+				if registeredAliases[alias] {
+					fmt.Fprintf(os.Stderr, "warning: library alias %q for %q conflicts with existing command, skipping\n", alias, displayKey)
+					continue
+				}
+				validAliases = append(validAliases, alias)
+				registeredAliases[alias] = true
+			}
+			if len(validAliases) > 0 {
+				libCmd.Aliases = validAliases
+			}
 		}
 
 		for _, item := range items {
@@ -145,7 +164,7 @@ func registerAPILibraryCommands(root *cobra.Command) map[string]map[string]bool 
 		root.AddCommand(libCmd)
 	}
 
-	return registered
+	return registered, registeredAliases
 }
 
 // libraryKey constructs a library identifier. If owner is set, returns "owner/slug"; otherwise just "slug".
@@ -181,17 +200,11 @@ func containsHelpFlag(args []string) bool {
 // registerGitLibraryCommands registers commands from git-backed libraries.
 // Commands are merged at the command level — only individual slug collisions are skipped,
 // not entire libraries. API commands take precedence on per-command collisions.
-func registerGitLibraryCommands(root *cobra.Command, registeredCmds map[string]map[string]bool) {
+func registerGitLibraryCommands(root *cobra.Command, registeredCmds map[string]map[string]bool, registeredAliases map[string]bool) {
 	reg, err := library.LoadRegistry()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to load source registry: %v\n", err)
 		return
-	}
-
-	// Track registered aliases to detect collisions
-	registeredAliases := make(map[string]bool)
-	for libSlug := range registeredCmds {
-		registeredAliases[libSlug] = true
 	}
 
 	for _, entry := range reg.Sources {

@@ -33,7 +33,7 @@ type mockLibraryStore struct {
 	GetLatestVersionByCommandFn        func(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error)
 	CreateVersionFn                    func(ctx context.Context, commandID uuid.UUID, version int, specJSON json.RawMessage, specHash, message string, createdBy uuid.UUID) (*model.CommandVersion, error)
 	ListVersionsByCommandFn            func(ctx context.Context, commandID uuid.UUID) ([]model.CommandVersion, error)
-	CreateOrUpdateLibraryFn            func(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string) (*model.Library, error)
+	CreateOrUpdateLibraryFn            func(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string, aliases []string) (*model.Library, error)
 	LibraryReleaseExistsFn             func(ctx context.Context, libraryID uuid.UUID, version string) (bool, error)
 	CreateLibraryReleaseFn             func(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error)
 	UpdateLibraryLatestVersionFn       func(ctx context.Context, libraryID uuid.UUID, version string) error
@@ -103,8 +103,8 @@ func (m *mockLibraryStore) CreateVersion(ctx context.Context, commandID uuid.UUI
 func (m *mockLibraryStore) ListVersionsByCommand(ctx context.Context, commandID uuid.UUID) ([]model.CommandVersion, error) {
 	return m.ListVersionsByCommandFn(ctx, commandID)
 }
-func (m *mockLibraryStore) CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string) (*model.Library, error) {
-	return m.CreateOrUpdateLibraryFn(ctx, ownerID, slug, name, description, gitURL)
+func (m *mockLibraryStore) CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string, aliases []string) (*model.Library, error) {
+	return m.CreateOrUpdateLibraryFn(ctx, ownerID, slug, name, description, gitURL, aliases)
 }
 func (m *mockLibraryStore) LibraryReleaseExists(ctx context.Context, libraryID uuid.UUID, version string) (bool, error) {
 	return m.LibraryReleaseExistsFn(ctx, libraryID, version)
@@ -403,7 +403,7 @@ func TestLibraryHandler_CreateRelease(t *testing.T) {
 				"commands":    []json.RawMessage{validSpec},
 			},
 			setupStore: func(ms *mockLibraryStore) {
-				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
 				}
 				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
@@ -467,7 +467,7 @@ func TestLibraryHandler_CreateRelease(t *testing.T) {
 				"commands": []json.RawMessage{},
 			},
 			setupStore: func(ms *mockLibraryStore) {
-				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 					return &model.Library{ID: testLib1}, nil
 				}
 				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
@@ -645,7 +645,7 @@ func TestLibraryHandler_CreateRelease_SystemNamespace(t *testing.T) {
 			GetUserByIDFn: func(_ context.Context, id uuid.UUID) (*model.User, error) {
 				return &model.User{ID: id, Email: "admin@example.com"}, nil
 			},
-			CreateOrUpdateLibraryFn: func(_ context.Context, ownerID uuid.UUID, slug, name, desc string, gitURL *string) (*model.Library, error) {
+			CreateOrUpdateLibraryFn: func(_ context.Context, ownerID uuid.UUID, slug, name, desc string, gitURL *string, _ []string) (*model.Library, error) {
 				capturedOwnerID = ownerID
 				return &model.Library{ID: testLib1, Slug: slug}, nil
 			},
@@ -751,7 +751,7 @@ func TestLibraryHandler_CreateRelease_SoftDeletesStaleCommands(t *testing.T) {
 	var softDeleted []uuid.UUID
 
 	ms := &mockLibraryStore{
-		CreateOrUpdateLibraryFn: func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+		CreateOrUpdateLibraryFn: func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 			return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
 		},
 		LibraryReleaseExistsFn: func(context.Context, uuid.UUID, string) (bool, error) {
@@ -844,7 +844,7 @@ func TestLibraryHandler_CreateRelease_TransactionErrors(t *testing.T) {
 		{
 			name: "CreateOrUpdateLibrary fails",
 			setupStore: func(ms *mockLibraryStore) {
-				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 					return nil, errors.New("db: connection refused")
 				}
 			},
@@ -852,7 +852,7 @@ func TestLibraryHandler_CreateRelease_TransactionErrors(t *testing.T) {
 		{
 			name: "LibraryReleaseExists fails",
 			setupStore: func(ms *mockLibraryStore) {
-				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
 				}
 				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
@@ -863,7 +863,7 @@ func TestLibraryHandler_CreateRelease_TransactionErrors(t *testing.T) {
 		{
 			name: "CreateLibraryRelease fails",
 			setupStore: func(ms *mockLibraryStore) {
-				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
 				}
 				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
@@ -893,7 +893,7 @@ func TestLibraryHandler_CreateRelease_TransactionErrors(t *testing.T) {
 		{
 			name: "UpdateLibraryLatestVersion fails",
 			setupStore: func(ms *mockLibraryStore) {
-				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
 				}
 				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
@@ -967,7 +967,7 @@ func TestLibraryHandler_CreateRelease_SkipOnHashMatch(t *testing.T) {
 	var createVersionCalled bool
 
 	ms := &mockLibraryStore{
-		CreateOrUpdateLibraryFn: func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+		CreateOrUpdateLibraryFn: func(context.Context, uuid.UUID, string, string, string, *string, []string) (*model.Library, error) {
 			return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
 		},
 		LibraryReleaseExistsFn: func(context.Context, uuid.UUID, string) (bool, error) {

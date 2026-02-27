@@ -396,6 +396,7 @@ manifest are released under the same tag. Requires login.`,
 					Name:        libDef.Name,
 					Description: libDef.Description,
 					GitURL:      gitURL,
+					Aliases:     libDef.Aliases,
 					Commands:    specJSONs,
 				}
 

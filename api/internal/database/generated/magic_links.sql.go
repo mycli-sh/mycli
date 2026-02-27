@@ -44,7 +44,7 @@ func (q *Queries) CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode s
 const createMagicLink = `-- name: CreateMagicLink :one
 INSERT INTO magic_links (email, token_hash, device_code, otp_hash, expires_at)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
+RETURNING id, email, token_hash, device_code, otp_hash, authorized, user_id, otp_attempts, expires_at, used_at, created_at
 `
 
 type CreateMagicLinkParams struct {
@@ -70,12 +70,12 @@ func (q *Queries) CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams
 		&i.TokenHash,
 		&i.DeviceCode,
 		&i.OtpHash,
-		&i.ExpiresAt,
-		&i.UsedAt,
-		&i.CreatedAt,
 		&i.Authorized,
 		&i.UserID,
 		&i.OtpAttempts,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -99,7 +99,7 @@ func (q *Queries) DeleteMagicLinksByDeviceCode(ctx context.Context, deviceCode s
 }
 
 const getMagicLinkByDeviceCode = `-- name: GetMagicLinkByDeviceCode :one
-SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
+SELECT id, email, token_hash, device_code, otp_hash, authorized, user_id, otp_attempts, expires_at, used_at, created_at
 FROM magic_links WHERE device_code = $1 AND expires_at > NOW()
 ORDER BY created_at DESC LIMIT 1
 `
@@ -113,18 +113,18 @@ func (q *Queries) GetMagicLinkByDeviceCode(ctx context.Context, deviceCode strin
 		&i.TokenHash,
 		&i.DeviceCode,
 		&i.OtpHash,
-		&i.ExpiresAt,
-		&i.UsedAt,
-		&i.CreatedAt,
 		&i.Authorized,
 		&i.UserID,
 		&i.OtpAttempts,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getMagicLinkByOTPHash = `-- name: GetMagicLinkByOTPHash :one
-SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
+SELECT id, email, token_hash, device_code, otp_hash, authorized, user_id, otp_attempts, expires_at, used_at, created_at
 FROM magic_links WHERE otp_hash = $1 AND used_at IS NULL AND expires_at > NOW()
 ORDER BY created_at DESC LIMIT 1
 `
@@ -138,18 +138,18 @@ func (q *Queries) GetMagicLinkByOTPHash(ctx context.Context, otpHash *string) (M
 		&i.TokenHash,
 		&i.DeviceCode,
 		&i.OtpHash,
-		&i.ExpiresAt,
-		&i.UsedAt,
-		&i.CreatedAt,
 		&i.Authorized,
 		&i.UserID,
 		&i.OtpAttempts,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getMagicLinkByTokenHash = `-- name: GetMagicLinkByTokenHash :one
-SELECT id, email, token_hash, device_code, otp_hash, expires_at, used_at, created_at, authorized, user_id, otp_attempts
+SELECT id, email, token_hash, device_code, otp_hash, authorized, user_id, otp_attempts, expires_at, used_at, created_at
 FROM magic_links WHERE token_hash = $1 AND expires_at > NOW() AND used_at IS NULL
 `
 
@@ -162,12 +162,12 @@ func (q *Queries) GetMagicLinkByTokenHash(ctx context.Context, tokenHash string)
 		&i.TokenHash,
 		&i.DeviceCode,
 		&i.OtpHash,
-		&i.ExpiresAt,
-		&i.UsedAt,
-		&i.CreatedAt,
 		&i.Authorized,
 		&i.UserID,
 		&i.OtpAttempts,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }

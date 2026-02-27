@@ -43,6 +43,9 @@ sql:
             go_type:
               type: "string"
               pointer: true
+          - column: "libraries.aliases"
+            go_type:
+              type: "[]string"
           - column: "libraries.latest_version"
             go_type:
               type: "string"

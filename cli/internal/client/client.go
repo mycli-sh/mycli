@@ -332,16 +332,17 @@ func (c *Client) DeleteCommand(id string) error {
 }
 
 type CatalogItem struct {
-	CommandID    string   `json:"command_id"`
-	Slug         string   `json:"slug"`
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Version      int      `json:"version"`
-	SpecHash     string   `json:"spec_hash"`
-	UpdatedAt    string   `json:"updated_at"`
-	Library      string   `json:"library,omitempty"`
-	LibraryOwner string   `json:"library_owner,omitempty"`
-	Aliases      []string `json:"aliases,omitempty"`
+	CommandID      string   `json:"command_id"`
+	Slug           string   `json:"slug"`
+	Name           string   `json:"name"`
+	Description    string   `json:"description"`
+	Version        int      `json:"version"`
+	SpecHash       string   `json:"spec_hash"`
+	UpdatedAt      string   `json:"updated_at"`
+	Library        string   `json:"library,omitempty"`
+	LibraryOwner   string   `json:"library_owner,omitempty"`
+	Aliases        []string `json:"aliases,omitempty"`
+	LibraryAliases []string `json:"library_aliases,omitempty"`
 }
 
 type CatalogResponse struct {
@@ -432,6 +433,7 @@ type CreateReleaseRequest struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	GitURL      string            `json:"git_url,omitempty"`
+	Aliases     []string          `json:"aliases,omitempty"`
 	Commands    []json.RawMessage `json:"commands"`
 }
 

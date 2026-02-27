@@ -96,7 +96,7 @@ func (s *Store) SearchPublicLibraries(ctx context.Context, query string, limit, 
 	}
 
 	rows, err := s.db.Query(ctx,
-		`SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at
+		`SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at, l.aliases
 		 FROM libraries l
 		 LEFT JOIN users u ON u.id = l.owner_id
 		 WHERE l.is_public = true
@@ -118,7 +118,7 @@ func (s *Store) SearchPublicLibraries(ctx context.Context, query string, limit, 
 		var lib model.Library
 		if err := rows.Scan(
 			&lib.ID, &lib.OwnerID, &lib.Slug, &lib.Name, &lib.Description,
-			&lib.GitURL, &lib.IsPublic, &lib.InstallCount, &lib.LatestVersion, &lib.CreatedAt, &lib.UpdatedAt,
+			&lib.GitURL, &lib.IsPublic, &lib.InstallCount, &lib.LatestVersion, &lib.CreatedAt, &lib.UpdatedAt, &lib.Aliases,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan library: %w", err)
 		}

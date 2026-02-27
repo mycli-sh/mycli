@@ -48,6 +48,7 @@ type Library struct {
 	LatestVersion *string            `json:"latest_version"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	Aliases       []string           `json:"aliases"`
 }
 
 type LibraryInstallation struct {
@@ -74,12 +75,12 @@ type MagicLink struct {
 	TokenHash   string             `json:"token_hash"`
 	DeviceCode  string             `json:"device_code"`
 	OtpHash     *string            `json:"otp_hash"`
-	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
-	UsedAt      *time.Time         `json:"used_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	Authorized  bool               `json:"authorized"`
 	UserID      *uuid.UUID         `json:"user_id"`
 	OtpAttempts int32              `json:"otp_attempts"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	UsedAt      *time.Time         `json:"used_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type Session struct {
@@ -88,12 +89,12 @@ type Session struct {
 	RefreshTokenHash string             `json:"refresh_token_hash"`
 	UserAgent        string             `json:"user_agent"`
 	IpAddress        string             `json:"ip_address"`
+	DeviceID         string             `json:"device_id"`
+	DeviceName       string             `json:"device_name"`
 	LastUsedAt       pgtype.Timestamptz `json:"last_used_at"`
 	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
 	RevokedAt        *time.Time         `json:"revoked_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	DeviceID         string             `json:"device_id"`
-	DeviceName       string             `json:"device_name"`
 }
 
 type User struct {

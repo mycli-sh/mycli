@@ -194,6 +194,7 @@ func (h *LibraryHandler) CreateRelease(w http.ResponseWriter, r *http.Request) {
 		Name        string            `json:"name"`
 		Description string            `json:"description"`
 		GitURL      string            `json:"git_url"`
+		Aliases     []string          `json:"aliases"`
 		Commands    []json.RawMessage `json:"commands"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -253,7 +254,7 @@ func (h *LibraryHandler) CreateRelease(w http.ResponseWriter, r *http.Request) {
 	)
 	if err := h.store.WithTx(r.Context(), func(tx store.LibraryStore) error {
 		// Upsert library
-		lib, err := tx.CreateOrUpdateLibrary(r.Context(), ownerID, slug, req.Name, req.Description, gitURL)
+		lib, err := tx.CreateOrUpdateLibrary(r.Context(), ownerID, slug, req.Name, req.Description, gitURL, req.Aliases)
 		if err != nil {
 			return fmt.Errorf("create library: %w", err)
 		}

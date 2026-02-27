@@ -13,6 +13,7 @@ type Library struct {
 	Name          string     `json:"name"`
 	Description   string     `json:"description"`
 	GitURL        *string    `json:"git_url,omitempty"`
+	Aliases       []string   `json:"aliases,omitempty"`
 	IsPublic      bool       `json:"is_public"`
 	InstallCount  int        `json:"install_count"`
 	LatestVersion *string    `json:"latest_version,omitempty"`

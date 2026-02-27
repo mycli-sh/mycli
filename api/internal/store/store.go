@@ -442,7 +442,7 @@ func (s *Store) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode stri
 		if err != nil {
 			return fmt.Errorf("create session: %w", err)
 		}
-		m := toModelSessionFromCreate(sess)
+		m := toModelSession(sess)
 		session = &m
 		return nil
 	})
@@ -469,7 +469,7 @@ func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, refreshToke
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
-	m := toModelSessionFromCreate(sess)
+	m := toModelSession(sess)
 	return &m, nil
 }
 
@@ -480,7 +480,7 @@ func (s *Store) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]mod
 	}
 	sessions := make([]model.Session, len(rows))
 	for i, r := range rows {
-		sessions[i] = toModelSessionFromList(r)
+		sessions[i] = toModelSession(r)
 	}
 	return sessions, nil
 }
@@ -493,7 +493,7 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (*m
 		}
 		return nil, fmt.Errorf("get session by token hash: %w", err)
 	}
-	m := toModelSessionFromTokenHash(sess)
+	m := toModelSession(sess)
 	return &m, nil
 }
 
@@ -609,13 +609,17 @@ func (s *Store) ListLibraries(ctx context.Context) ([]model.Library, error) {
 	return libs, nil
 }
 
-func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string) (*model.Library, error) {
+func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string, aliases []string) (*model.Library, error) {
+	if aliases == nil {
+		aliases = []string{}
+	}
 	lib, err := s.q.CreateOrUpdateLibrary(ctx, dbgen.CreateOrUpdateLibraryParams{
 		OwnerID:     &ownerID,
 		Slug:        slug,
 		Name:        name,
 		Description: description,
 		GitUrl:      gitURL,
+		Aliases:     aliases,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create or update library: %w", err)
