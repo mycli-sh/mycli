@@ -37,7 +37,15 @@ func New(baseURL string) *Client {
 			req.SetHeader("X-Device-Name", hostname)
 		}
 		if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
-			req.SetHeader("Authorization", "Bearer "+tokens.AccessToken)
+			// Proactively refresh if token is expired or near-expiry (30s buffer)
+			if !c.refreshing && !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt.Add(-30*time.Second)) {
+				if c.tryRefresh() {
+					tokens, _ = auth.LoadTokens() // reload after refresh
+				}
+			}
+			if tokens.AccessToken != "" {
+				req.SetHeader("Authorization", "Bearer "+tokens.AccessToken)
+			}
 		}
 		return nil
 	})

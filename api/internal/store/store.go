@@ -58,6 +58,14 @@ func (s *Store) withTx(ctx context.Context, fn func(tx *Store) error) error {
 	return tx.Commit(ctx)
 }
 
+// WithTx runs fn inside a database transaction, passing a LibraryStore backed
+// by the transaction. If fn returns an error the transaction is rolled back.
+func (s *Store) WithTx(ctx context.Context, fn func(LibraryStore) error) error {
+	return s.withTx(ctx, func(tx *Store) error {
+		return fn(tx)
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------

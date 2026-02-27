@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -125,6 +126,9 @@ func (m *mockLibraryStore) ListLibraryReleases(ctx context.Context, libraryID uu
 }
 func (m *mockLibraryStore) GetLibraryRelease(ctx context.Context, libraryID uuid.UUID, version string) (*model.LibraryRelease, error) {
 	return m.GetLibraryReleaseFn(ctx, libraryID, version)
+}
+func (m *mockLibraryStore) WithTx(_ context.Context, fn func(store.LibraryStore) error) error {
+	return fn(m)
 }
 
 func TestLibraryHandler_Search(t *testing.T) {
@@ -815,5 +819,211 @@ func TestLibraryHandler_CreateRelease_SoftDeletesStaleCommands(t *testing.T) {
 	}
 	if softDeleted[0] != staleCmd {
 		t.Errorf("soft-deleted command ID = %s, want %s", softDeleted[0], staleCmd)
+	}
+}
+
+func TestLibraryHandler_CreateRelease_TransactionErrors(t *testing.T) {
+	validSpec := json.RawMessage(`{
+		"schemaVersion": 1,
+		"kind": "command",
+		"metadata": {"name": "deploy", "slug": "deploy"},
+		"steps": [{"name": "run", "run": "echo hello"}]
+	}`)
+
+	body := map[string]any{
+		"tag":         "v1.0.0",
+		"commit_hash": "abc123",
+		"name":        "Kubernetes",
+		"commands":    []json.RawMessage{validSpec},
+	}
+
+	tests := []struct {
+		name       string
+		setupStore func(*mockLibraryStore)
+	}{
+		{
+			name: "CreateOrUpdateLibrary fails",
+			setupStore: func(ms *mockLibraryStore) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+					return nil, errors.New("db: connection refused")
+				}
+			},
+		},
+		{
+			name: "LibraryReleaseExists fails",
+			setupStore: func(ms *mockLibraryStore) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
+				}
+				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
+					return false, errors.New("db: query failed")
+				}
+			},
+		},
+		{
+			name: "CreateLibraryRelease fails",
+			setupStore: func(ms *mockLibraryStore) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
+				}
+				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
+					return false, nil
+				}
+				// publishCommands dependencies (command exists, hash differs, version created)
+				ms.GetCommandByLibraryAndSlugFn = func(context.Context, uuid.UUID, string) (*model.Command, error) {
+					return nil, store.ErrNotFound
+				}
+				ms.CreateCommandForLibraryFn = func(_ context.Context, _, _ uuid.UUID, name, slug, _ string, _ json.RawMessage) (*model.Command, error) {
+					return &model.Command{ID: testCmd1, Name: name, Slug: slug}, nil
+				}
+				ms.GetLatestHashByCommandFn = func(context.Context, uuid.UUID) (string, error) {
+					return "", store.ErrNotFound
+				}
+				ms.GetLatestVersionByCommandFn = func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
+					return nil, store.ErrNotFound
+				}
+				ms.CreateVersionFn = func(_ context.Context, cmdID uuid.UUID, ver int, _ json.RawMessage, hash, _ string, _ uuid.UUID) (*model.CommandVersion, error) {
+					return &model.CommandVersion{ID: testCV1, CommandID: cmdID, Version: ver, SpecHash: hash}, nil
+				}
+				ms.CreateLibraryReleaseFn = func(context.Context, uuid.UUID, string, string, string, int, uuid.UUID) (*model.LibraryRelease, error) {
+					return nil, errors.New("db: insert failed")
+				}
+			},
+		},
+		{
+			name: "UpdateLibraryLatestVersion fails",
+			setupStore: func(ms *mockLibraryStore) {
+				ms.CreateOrUpdateLibraryFn = func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+					return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
+				}
+				ms.LibraryReleaseExistsFn = func(context.Context, uuid.UUID, string) (bool, error) {
+					return false, nil
+				}
+				// publishCommands dependencies
+				ms.GetCommandByLibraryAndSlugFn = func(context.Context, uuid.UUID, string) (*model.Command, error) {
+					return nil, store.ErrNotFound
+				}
+				ms.CreateCommandForLibraryFn = func(_ context.Context, _, _ uuid.UUID, name, slug, _ string, _ json.RawMessage) (*model.Command, error) {
+					return &model.Command{ID: testCmd1, Name: name, Slug: slug}, nil
+				}
+				ms.GetLatestHashByCommandFn = func(context.Context, uuid.UUID) (string, error) {
+					return "", store.ErrNotFound
+				}
+				ms.GetLatestVersionByCommandFn = func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
+					return nil, store.ErrNotFound
+				}
+				ms.CreateVersionFn = func(_ context.Context, cmdID uuid.UUID, ver int, _ json.RawMessage, hash, _ string, _ uuid.UUID) (*model.CommandVersion, error) {
+					return &model.CommandVersion{ID: testCV1, CommandID: cmdID, Version: ver, SpecHash: hash}, nil
+				}
+				ms.CreateLibraryReleaseFn = func(_ context.Context, libID uuid.UUID, version, tag, commit string, count int, by uuid.UUID) (*model.LibraryRelease, error) {
+					return &model.LibraryRelease{
+						ID: uuid.MustParse("00000000-0000-4000-8000-000000000060"), LibraryID: libID, Version: version,
+						Tag: tag, CommitHash: commit, CommandCount: count, ReleasedBy: by, ReleasedAt: time.Now(),
+					}, nil
+				}
+				ms.UpdateLibraryLatestVersionFn = func(context.Context, uuid.UUID, string) error {
+					return errors.New("db: update failed")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := &mockLibraryStore{}
+			tt.setupStore(ms)
+			h := NewLibraryHandler(&config.Config{}, ms)
+
+			r := chi.NewRouter()
+			r.Post("/libraries/{slug}/releases", h.CreateRelease)
+
+			req := requestWithUser("POST", "/libraries/kubernetes/releases", body, testUser2)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("got status %d, want 500 (body=%s)", rec.Code, rec.Body.String())
+			}
+			var resp errorResponse
+			decodeJSON(t, rec, &resp)
+			if resp.Error.Code != "INTERNAL_ERROR" {
+				t.Errorf("got error code %q, want INTERNAL_ERROR", resp.Error.Code)
+			}
+		})
+	}
+}
+
+func TestLibraryHandler_CreateRelease_SkipOnHashMatch(t *testing.T) {
+	validSpec := json.RawMessage(`{
+		"schemaVersion": 1,
+		"kind": "command",
+		"metadata": {"name": "deploy", "slug": "deploy"},
+		"steps": [{"name": "run", "run": "echo hello"}]
+	}`)
+
+	// Pre-computed hash for the spec above (spec.Parse → spec.Hash)
+	const expectedHash = "sha256:15ccb815b8167b0733154335d7456041db64f9d64c3ed32df4822426babf9e63"
+
+	var createVersionCalled bool
+
+	ms := &mockLibraryStore{
+		CreateOrUpdateLibraryFn: func(context.Context, uuid.UUID, string, string, string, *string) (*model.Library, error) {
+			return &model.Library{ID: testLib1, Slug: "kubernetes"}, nil
+		},
+		LibraryReleaseExistsFn: func(context.Context, uuid.UUID, string) (bool, error) {
+			return false, nil
+		},
+		GetCommandByLibraryAndSlugFn: func(context.Context, uuid.UUID, string) (*model.Command, error) {
+			return &model.Command{ID: testCmd1, Slug: "deploy"}, nil
+		},
+		GetLatestHashByCommandFn: func(context.Context, uuid.UUID) (string, error) {
+			return expectedHash, nil // same hash → skip version creation
+		},
+		CreateVersionFn: func(context.Context, uuid.UUID, int, json.RawMessage, string, string, uuid.UUID) (*model.CommandVersion, error) {
+			createVersionCalled = true
+			return &model.CommandVersion{}, nil
+		},
+		CreateLibraryReleaseFn: func(_ context.Context, libID uuid.UUID, version, tag, commit string, count int, by uuid.UUID) (*model.LibraryRelease, error) {
+			if count != 1 {
+				t.Errorf("CreateLibraryRelease command_count = %d, want 1", count)
+			}
+			return &model.LibraryRelease{
+				ID: uuid.MustParse("00000000-0000-4000-8000-000000000060"), LibraryID: libID, Version: version,
+				Tag: tag, CommitHash: commit, CommandCount: count, ReleasedBy: by, ReleasedAt: time.Now(),
+			}, nil
+		},
+		UpdateLibraryLatestVersionFn: func(context.Context, uuid.UUID, string) error {
+			return nil
+		},
+	}
+
+	h := NewLibraryHandler(&config.Config{}, ms)
+
+	r := chi.NewRouter()
+	r.Post("/libraries/{slug}/releases", h.CreateRelease)
+
+	body := map[string]any{
+		"tag":         "v1.0.0",
+		"commit_hash": "abc123",
+		"name":        "Kubernetes",
+		"commands":    []json.RawMessage{validSpec},
+	}
+	req := requestWithUser("POST", "/libraries/kubernetes/releases", body, testUser2)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	if createVersionCalled {
+		t.Error("CreateVersion was called, but should have been skipped (hash match)")
+	}
+
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	published, ok := resp["published"].(float64)
+	if !ok || int(published) != 1 {
+		t.Errorf("published = %v, want 1", resp["published"])
 	}
 }

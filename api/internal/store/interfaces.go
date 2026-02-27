@@ -102,4 +102,5 @@ type LibraryStore interface {
 	UninstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error
 	ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]model.LibraryRelease, error)
 	GetLibraryRelease(ctx context.Context, libraryID uuid.UUID, version string) (*model.LibraryRelease, error)
+	WithTx(ctx context.Context, fn func(LibraryStore) error) error
 }
