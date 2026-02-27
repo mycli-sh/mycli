@@ -54,3 +54,4 @@ The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JW
 - Command slugs must match `^[a-z][a-z0-9-]*$`
 - Source repos cloned under `~/.my/sources/repos/` (path derived from URL)
 - Source registry at `~/.my/sources/sources.json`
+- TUI components use **Bubble Tea v2** (`charm.land/bubbletea/v2`) and **Lipgloss v2** (`charm.land/lipgloss/v2`). Key patterns live in `cli/internal/commands/explore.go` (library explorer) and `cli/internal/commands/otpui.go` (OTP verification). Reuse existing styles and color vars from explore.go when building new TUI components.

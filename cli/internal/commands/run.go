@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,8 @@ import (
 	"mycli.sh/cli/internal/client"
 	"mycli.sh/cli/internal/engine"
 	"mycli.sh/cli/internal/history"
+	"mycli.sh/cli/internal/library"
+	"mycli.sh/cli/internal/termui"
 	"mycli.sh/pkg/spec"
 )
 
@@ -21,15 +24,27 @@ func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [slug] [args...]",
 		Short: "Run a command",
-		Long:  "Run a command from the cache by slug, or directly from a file with -f.",
-		Args:  cobra.ArbitraryArgs,
+		Long: `Run a command by slug, directly from a file with -f, or pick interactively.
+
+Without arguments, opens an interactive picker to search and select a command.
+Use -f to run a spec file directly without pushing:
+
+  my cli run -f command.yaml
+  my cli run -f .                  (auto-detect spec in current directory)`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if file != "" {
+				if file == "." {
+					file = detectLocalSpecFile()
+					if file == "" {
+						return fmt.Errorf("no spec file found in current directory")
+					}
+				}
 				return runFromFile(file, args, yes)
 			}
 
 			if len(args) == 0 {
-				return fmt.Errorf("requires a slug argument or --file flag")
+				return runInteractiveOrError(yes)
 			}
 
 			slug := args[0]
@@ -48,6 +63,82 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation prompts")
 	cmd.Flags().StringVarP(&file, "file", "f", "", "run a command directly from a spec file")
 	return cmd
+}
+
+// detectLocalSpecFile checks CWD for command.yaml/.yml/.json and returns the filename, or "" if none found.
+func detectLocalSpecFile() string {
+	for _, name := range []string{"command.yaml", "command.yml", "command.json"} {
+		if _, err := os.Stat(name); err == nil {
+			return name
+		}
+	}
+	return ""
+}
+
+// runInteractiveOrError launches the interactive picker on a TTY, or prints a fallback table.
+func runInteractiveOrError(yes bool) error {
+	if !termui.IsTTY() {
+		return runNonTTYFallback()
+	}
+
+	localFile := detectLocalSpecFile()
+	item, err := runPicker(localFile)
+	if err != nil {
+		return err
+	}
+	if item == nil {
+		return nil // user cancelled
+	}
+	return runPickerSelection(item, yes)
+}
+
+// runPickerSelection dispatches execution based on the picker item's source.
+func runPickerSelection(item *pickerItem, yes bool) error {
+	switch item.Source {
+	case sourceLocal:
+		return runFromFile(item.FilePath, nil, yes)
+	case sourcePersonal:
+		s, err := resolveSpec(item.CatalogItem.Slug)
+		if err != nil {
+			return err
+		}
+		return executeAndRecord(s, item.CatalogItem.Slug, nil, yes, item.CatalogItem)
+	case sourceLibrary:
+		s, err := cache.GetLibrarySpec(item.LibraryKey, item.CatalogItem.Slug)
+		if err != nil {
+			return err
+		}
+		return executeAndRecord(s, item.Slug, nil, yes, item.CatalogItem)
+	case sourceGit:
+		s, err := library.GetSpec(item.FilePath)
+		if err != nil {
+			return err
+		}
+		return executeAndRecord(s, item.Slug, nil, yes, nil)
+	default:
+		return fmt.Errorf("unknown source type")
+	}
+}
+
+// runNonTTYFallback prints a tabular list of commands for non-interactive use.
+func runNonTTYFallback() error {
+	items := loadPickerItems()
+	if len(items) == 0 {
+		return fmt.Errorf("no commands available; provide a slug argument: my cli run <slug>")
+	}
+
+	fmt.Fprintln(os.Stderr, "Available commands:")
+	w := tabwriter.NewWriter(os.Stderr, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "SLUG\tSOURCE\tDESCRIPTION")
+	for _, item := range items {
+		desc := item.Description
+		if len(desc) > 60 {
+			desc = desc[:57] + "..."
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", item.Slug, item.SourceLabel, desc)
+	}
+	w.Flush()
+	return fmt.Errorf("provide a slug argument: my cli run <slug>")
 }
 
 func runFromFile(file string, args []string, yes bool) error {

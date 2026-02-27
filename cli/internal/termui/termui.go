@@ -8,6 +8,9 @@ import (
 
 var isTTY = term.IsTerminal(int(os.Stdout.Fd()))
 
+// IsTTY reports whether stdout is connected to a terminal.
+func IsTTY() bool { return isTTY }
+
 func Bold(s string) string {
 	if !isTTY {
 		return s
