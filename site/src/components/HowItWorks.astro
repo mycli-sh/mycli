@@ -4,7 +4,10 @@ const steps = [
     number: "1",
     title: "Define",
     description: "Write a command spec in YAML with arguments, flags, and templated steps.",
-    code: `metadata:
+    code: `schemaVersion: 1
+kind: command
+
+metadata:
   name: greet
   slug: greet
   description: Greet someone
@@ -16,20 +19,24 @@ args:
 
 steps:
   - name: greet
-    run:
-      - echo 'Hello, {{.args.name}}!'`,
+    run: echo 'Hello, {{.args.name}}!'`,
   },
   {
     number: "2",
     title: "Publish",
     description: "Push your command to the registry to share it across machines.",
     code: `$ my cli push -f command.yaml
-Pushed greet v1 ✓
+Created command "greet" (a1b2c3d4-...)
+Published version 1 (hash: e5f6a7b8)
 
 $ my cli push --dir ./commands/
-Pushed deploy v3 ✓
-Pushed backup v1 ✓
-Pushed status v2 ✓`,
+Pushing commands/deploy/command.yaml ...
+Published version 3 (hash: c4d5e6f7)
+Pushing commands/backup/command.yaml ...
+Created command "backup" (f8a9b0c1-...)
+Published version 1 (hash: d2e3f4a5)
+
+2 succeeded, 0 failed`,
   },
   {
     number: "3",
@@ -39,8 +46,8 @@ Pushed status v2 ✓`,
 Hello, World!
 
 $ my cli run deploy -- production
-Running deploy (v3)...
-Deployed to production ✓`,
+Deploying to production...
+Deploy complete.`,
   },
 ];
 ---

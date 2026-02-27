@@ -25,12 +25,11 @@ const code = `<span class="text-zinc-500">schemaVersion:</span> <span class="tex
 
 <span class="text-zinc-500">steps:</span>
   - <span class="text-zinc-500">name:</span> <span class="text-emerald-400">validate</span>
-    <span class="text-zinc-500">run:</span>
-      - <span class="text-amber-400">echo "Deploying to ${"{{.args.environment}}"}..."</span>
-      - <span class="text-amber-400">test -f ${"{{.cwd}}"}/deploy.sh</span>
+    <span class="text-zinc-500">run:</span> <span class="text-amber-400">|</span>
+      <span class="text-amber-400">echo "Deploying to ${"{{.args.environment}}"}..."</span>
+      <span class="text-amber-400">test -f ${"{{.cwd}}"}/deploy.sh</span>
   - <span class="text-zinc-500">name:</span> <span class="text-emerald-400">deploy</span>
-    <span class="text-zinc-500">run:</span>
-      - <span class="text-amber-400">./deploy.sh ${"{{.args.environment}}"}</span>
+    <span class="text-zinc-500">run:</span> <span class="text-amber-400">./deploy.sh ${"{{.args.environment}}"}</span>
 
 <span class="text-zinc-500">policy:</span>
   <span class="text-zinc-500">requireConfirmation:</span> <span class="text-violet-400">true</span>`;

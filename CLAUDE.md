@@ -46,6 +46,7 @@ The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JW
 
 ## Conventions
 
+- **Use `bun` as the JavaScript package manager.** Do not use npm or yarn. Use `bun install`, `bun run`, etc.
 - Database IDs use native PostgreSQL UUIDs (UUIDv7 via `uuidv7()`, Go type `uuid.UUID` from `google/uuid`)
 - Soft deletes on commands (`deleted_at` column)
 - Auth tokens stored in OS keyring with file fallback (`~/.my/credentials.json`)
