@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"mycli.sh/cli/internal/auth"
 	"mycli.sh/cli/internal/client"
@@ -136,9 +136,33 @@ func (m otpModel) Init() tea.Cmd {
 func (m otpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+	case tea.PasteMsg:
+		for _, r := range msg.Content {
+			if r >= '0' && r <= '9' && len(m.code) < 6 && m.status != "verifying" {
+				m.code += string(r)
+				if m.status == "error" {
+					m.status = ""
+					m.statusMsg = ""
+				}
+				if len(m.code) == 6 {
+					m.status = "verifying"
+					m.statusMsg = "Verifying code..."
+					return m, verifyOTPCmd(m.client, m.deviceCode, m.code)
+				}
+			}
+		}
+		return m, nil
+
+	case tea.KeyPressMsg:
+		// Ctrl+C to quit
+		if msg.Mod.Contains(tea.ModCtrl) && msg.Code == 'c' {
+			m.err = fmt.Errorf("login cancelled")
+			m.done = true
+			return m, tea.Quit
+		}
+
+		switch msg.Code {
+		case tea.KeyEscape:
 			m.err = fmt.Errorf("login cancelled")
 			m.done = true
 			return m, tea.Quit
@@ -157,8 +181,8 @@ func (m otpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case tea.KeyRunes:
-			for _, r := range msg.Runes {
+		default:
+			for _, r := range msg.Text {
 				// Handle 'r'/'R' to resend when code is empty
 				if (r == 'r' || r == 'R') && len(m.code) == 0 && m.status != "resending" && m.status != "verifying" {
 					if time.Now().Before(m.resendCooldownUntil) {
@@ -255,7 +279,7 @@ func (m otpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m otpModel) View() string {
+func (m otpModel) View() tea.View {
 	var b strings.Builder
 
 	// Logo
@@ -321,7 +345,7 @@ func (m otpModel) View() string {
 	}
 
 	b.WriteString("\n")
-	return b.String()
+	return tea.View{Content: b.String()}
 }
 
 // Public entry point

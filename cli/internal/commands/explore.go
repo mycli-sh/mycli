@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	tea "github.com/charmbracelet/bubbletea"
 
 	"mycli.sh/cli/internal/auth"
 	"mycli.sh/cli/internal/cache"
@@ -53,8 +53,14 @@ type exploreModel struct {
 	detailScroll  int
 
 	// Install
-	installing bool
-	installMsg string
+	installing   bool
+	installMsg   string
+	installedSet map[string]struct{}
+
+	// Animation
+	spinnerFrame  int
+	cursorVisible bool
+	borderOffset  int
 
 	apiClient *client.Client
 }
@@ -87,50 +93,134 @@ type searchDebounceMsg struct {
 	seq int
 }
 
-// --- Styles ---
+type spinnerTickMsg struct{}
+
+// --- Spinner ---
+
+var spinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func spinnerTick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg {
+		return spinnerTickMsg{}
+	})
+}
+
+// --- Colors ---
 
 var (
 	violet      = lipgloss.Color("#8B5CF6")
+	violetLight = lipgloss.Color("#A78BFA")
+	violetDark  = lipgloss.Color("#6D28D9")
+	cyanColor   = lipgloss.Color("#22D3EE")
+	white       = lipgloss.Color("#F4F4F5")
 	subtleGray  = lipgloss.Color("#71717A")
 	mutedGray   = lipgloss.Color("#A1A1AA")
 	dimGray     = lipgloss.Color("#3F3F46")
+	darkGray    = lipgloss.Color("#27272A")
+	darkerGray  = lipgloss.Color("#18181B")
 	greenColor  = lipgloss.Color("#4ADE80")
-	yellowColor = lipgloss.Color("#FACC15")
-	whiteColor  = lipgloss.Color("#E4E4E7")
+	greenDim    = lipgloss.Color("#166534")
+	redColor    = lipgloss.Color("#F87171")
+)
 
-	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(whiteColor)
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(violet)
+// --- Styles ---
 
+var (
+	// Header
+	headerTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(violet)
+
+	// Search box
 	searchBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(dimGray).
 			Padding(0, 1).
-			MarginLeft(2)
+			MarginLeft(1)
 
 	searchBoxFocusedStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(violet).
 				Padding(0, 1).
-				MarginLeft(2)
+				MarginLeft(1)
 
-	cursorStyle      = lipgloss.NewStyle().Foreground(violet).Bold(true)
-	libNameStyle     = lipgloss.NewStyle().Bold(true).Foreground(whiteColor)
-	libOwnerStyle    = lipgloss.NewStyle().Foreground(subtleGray)
-	officialStyle    = lipgloss.NewStyle().Foreground(violet)
-	libDescStyle     = lipgloss.NewStyle().Foreground(mutedGray)
-	installsStyle    = lipgloss.NewStyle().Foreground(subtleGray)
-	activeTabStyle   = lipgloss.NewStyle().Bold(true).Foreground(violet)
-	inactiveTabStyle = lipgloss.NewStyle().Foreground(subtleGray)
-	helpStyle        = lipgloss.NewStyle().Foreground(subtleGray)
-	errorStyle       = lipgloss.NewStyle().Foreground(yellowColor)
-	successStyle     = lipgloss.NewStyle().Foreground(greenColor)
-	countStyle       = lipgloss.NewStyle().Foreground(subtleGray)
-	detailCardStyle  = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(violet).
-				Padding(0, 1).
-				MarginLeft(2)
+	searchIconStyle    = lipgloss.NewStyle().Foreground(subtleGray)
+	searchCountStyle   = lipgloss.NewStyle().Foreground(subtleGray)
+	searchSpinnerStyle = lipgloss.NewStyle().Foreground(violet)
+
+	// Library cards
+	cardNormalStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(dimGray).
+			Padding(0, 1).
+			MarginLeft(1)
+
+	// Detail hero card
+	detailHeroStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(1, 2).
+			MarginLeft(1)
+
+	// Tabs
+	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(violet)
+	tabInactiveStyle = lipgloss.NewStyle().Foreground(subtleGray)
+	tabLineStyle     = lipgloss.NewStyle().Foreground(dimGray)
+
+	// Badges
+	badgeOfficialStyle    = lipgloss.NewStyle().Foreground(violet)
+	badgeVersionStyle     = lipgloss.NewStyle().Foreground(darkerGray).Background(violetLight).Padding(0, 1)
+	badgeInstallCntStyle  = lipgloss.NewStyle().Foreground(subtleGray)
+	installBtnStyle       = lipgloss.NewStyle().Foreground(white).Background(violet).Padding(0, 2).Bold(true)
+	installBtnActiveStyle = lipgloss.NewStyle().Foreground(white).Background(violetDark).Padding(0, 2)
+	installBtnDoneStyle   = lipgloss.NewStyle().Foreground(white).Background(greenDim).Padding(0, 2).Bold(true)
+
+	// Help bar
+	helpKeyStyle  = lipgloss.NewStyle().Foreground(white).Background(darkGray).Padding(0, 1).Bold(true)
+	helpDescStyle = lipgloss.NewStyle().Foreground(subtleGray)
+	positionStyle = lipgloss.NewStyle().Foreground(mutedGray).Background(darkGray).Padding(0, 1)
+
+	// Scroll indicators
+	scrollIndicatorStyle = lipgloss.NewStyle().Foreground(violet)
+
+	// Content
+	libNameStyle  = lipgloss.NewStyle().Bold(true).Foreground(white)
+	libOwnerStyle = lipgloss.NewStyle().Foreground(subtleGray)
+	libDescStyle  = lipgloss.NewStyle().Foreground(mutedGray)
+	errorStyle    = lipgloss.NewStyle().Foreground(redColor)
+	successStyle  = lipgloss.NewStyle().Foreground(greenColor)
+
+	// Commands table
+	cmdSlugStyle = lipgloss.NewStyle().Foreground(violetLight)
+	cmdDescStyle = lipgloss.NewStyle().Foreground(mutedGray)
+
+	// Releases timeline
+	timelineDotLatest = lipgloss.NewStyle().Foreground(violet)
+	timelineDotOlder  = lipgloss.NewStyle().Foreground(subtleGray)
+	timelineConnector = lipgloss.NewStyle().Foreground(dimGray)
+	releaseTagStyle   = lipgloss.NewStyle().Foreground(darkerGray).Background(violetLight).Padding(0, 1)
+	releaseDateStyle  = lipgloss.NewStyle().Foreground(subtleGray)
+	releaseCmdStyle   = lipgloss.NewStyle().Foreground(dimGray)
 )
+
+// --- Helpers ---
+
+func installedKey(owner, slug string) string {
+	return owner + "/" + slug
+}
+
+func (m exploreModel) isInstalled(owner, slug string) bool {
+	_, ok := m.installedSet[installedKey(owner, slug)]
+	return ok
+}
+
+func formatCount(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
+	}
+}
 
 // --- Commands (async) ---
 
@@ -218,7 +308,7 @@ func debounceSearch(seq int) tea.Cmd {
 // --- Init / Update / View ---
 
 func (m exploreModel) Init() tea.Cmd {
-	return tea.Batch(tea.EnterAltScreen, fetchLibraries(m.apiClient, "", 0))
+	return tea.Batch(fetchLibraries(m.apiClient, "", 0), spinnerTick())
 }
 
 func (m exploreModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -229,8 +319,18 @@ func (m exploreModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+
+	case spinnerTickMsg:
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		m.cursorVisible = !m.cursorVisible
+		m.borderOffset++
+		// Keep ticking while there's animation to show
+		if m.listLoading || m.detailLoading || m.installing || m.searchFocused {
+			return m, spinnerTick()
+		}
+		return m, nil
 
 	case librariesLoadedMsg:
 		if msg.seq != m.searchSeq {
@@ -269,9 +369,12 @@ func (m exploreModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case installResultMsg:
 		m.installing = false
 		if msg.err != nil {
-			m.installMsg = "Error: " + msg.err.Error()
+			m.installMsg = "error:" + msg.err.Error()
 		} else {
-			m.installMsg = "Installed " + msg.name
+			m.installMsg = "ok:" + msg.name
+			if m.selectedLib != nil {
+				m.installedSet[installedKey(m.selectedLib.Owner, m.selectedLib.Library.Slug)] = struct{}{}
+			}
 		}
 		return m, nil
 
@@ -287,9 +390,9 @@ func (m exploreModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m exploreModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m exploreModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Global quit
-	if msg.Type == tea.KeyCtrlC {
+	if msg.Mod.Contains(tea.ModCtrl) && msg.Code == 'c' {
 		return m, tea.Quit
 	}
 
@@ -299,13 +402,13 @@ func (m exploreModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.handleDetailKey(msg)
 }
 
-func (m exploreModel) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m exploreModel) handleListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.searchFocused {
 		return m.handleSearchKey(msg)
 	}
 
-	switch msg.Type {
-	case tea.KeyEsc:
+	switch msg.Code {
+	case tea.KeyEscape:
 		return m, tea.Quit
 	case tea.KeyUp:
 		return m.moveCursor(-1), nil
@@ -313,28 +416,26 @@ func (m exploreModel) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.moveCursor(1), nil
 	case tea.KeyEnter:
 		return m.openDetail()
-	case tea.KeyRunes:
-		switch string(msg.Runes) {
-		case "q":
-			return m, tea.Quit
-		case "/":
-			m.searchFocused = true
-			return m, nil
-		case "k":
-			return m.moveCursor(-1), nil
-		case "j":
-			return m.moveCursor(1), nil
-		}
 	}
+
+	switch msg.Text {
+	case "q":
+		return m, tea.Quit
+	case "/":
+		m.searchFocused = true
+		return m, spinnerTick()
+	case "k":
+		return m.moveCursor(-1), nil
+	case "j":
+		return m.moveCursor(1), nil
+	}
+
 	return m, nil
 }
 
-func (m exploreModel) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
-		if m.searchInput == "" {
-			return m, tea.Quit
-		}
+func (m exploreModel) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.Code {
+	case tea.KeyEscape:
 		m.searchFocused = false
 		return m, nil
 	case tea.KeyEnter:
@@ -347,17 +448,20 @@ func (m exploreModel) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, debounceSearch(m.searchSeq)
 		}
 		return m, nil
-	case tea.KeyRunes:
-		m.searchInput += string(msg.Runes)
+	}
+
+	if msg.Text != "" {
+		m.searchInput += msg.Text
 		m.searchSeq++
 		return m, debounceSearch(m.searchSeq)
 	}
+
 	return m, nil
 }
 
-func (m exploreModel) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc, tea.KeyLeft:
+func (m exploreModel) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.Code {
+	case tea.KeyEscape:
 		m.view = viewList
 		m.selectedLib = nil
 		m.releases = nil
@@ -375,29 +479,37 @@ func (m exploreModel) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyDown:
-		m.detailScroll++
-		return m, nil
-	case tea.KeyRunes:
-		switch string(msg.Runes) {
-		case "q":
-			return m, tea.Quit
-		case "k":
-			if m.detailScroll > 0 {
-				m.detailScroll--
-			}
-			return m, nil
-		case "j":
+		if m.detailScroll < m.maxDetailScroll() {
 			m.detailScroll++
-			return m, nil
-		case "i":
-			if !m.installing && m.selectedLib != nil {
-				m.installing = true
-				m.installMsg = "Installing..."
-				return m, installLibraryCmd(m.apiClient, m.selectedLib.Owner, m.selectedLib.Library.Slug)
-			}
-			return m, nil
 		}
+		return m, nil
 	}
+
+	switch msg.Text {
+	case "q":
+		return m, tea.Quit
+	case "k":
+		if m.detailScroll > 0 {
+			m.detailScroll--
+		}
+		return m, nil
+	case "j":
+		if m.detailScroll < m.maxDetailScroll() {
+			m.detailScroll++
+		}
+		return m, nil
+	case "i":
+		if !m.installing && m.selectedLib != nil && !m.isInstalled(m.selectedLib.Owner, m.selectedLib.Library.Slug) {
+			m.installing = true
+			m.installMsg = ""
+			return m, tea.Batch(
+				installLibraryCmd(m.apiClient, m.selectedLib.Owner, m.selectedLib.Library.Slug),
+				spinnerTick(),
+			)
+		}
+		return m, nil
+	}
+
 	return m, nil
 }
 
@@ -435,12 +547,45 @@ func (m exploreModel) openDetail() (tea.Model, tea.Cmd) {
 	return m, tea.Batch(
 		fetchLibraryDetail(m.apiClient, lib.Owner, lib.Slug),
 		fetchReleases(m.apiClient, lib.Owner, lib.Slug),
+		spinnerTick(),
 	)
 }
 
+func (m exploreModel) maxDetailScroll() int {
+	var itemCount int
+	if m.detailTab == 0 {
+		if m.selectedLib != nil {
+			itemCount = len(m.selectedLib.Commands)
+		}
+	} else {
+		itemCount = len(m.releases)
+	}
+
+	availableRows := m.height - 18
+	if availableRows < 1 {
+		availableRows = 1
+	}
+
+	// For releases, each item takes 2 visual lines (item + connector) except the last.
+	// So N items fit if (maxRows+1)/2 >= N, meaning max visible = (availableRows+1)/2.
+	var visibleItems int
+	if m.detailTab == 1 {
+		visibleItems = (availableRows + 1) / 2
+	} else {
+		visibleItems = availableRows
+	}
+
+	maxScroll := itemCount - visibleItems
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
 func (m exploreModel) visibleListRows() int {
-	// header(3) + search(3) + help(2) + padding = ~10 lines overhead
-	rows := (m.height - 10) / 3 // each library row = ~3 lines
+	// header(2) + search(5) + scroll indicators(2) + blank(1) + help(1) = 11 lines overhead
+	// each card = 5 lines (top border + 2 content + bottom border + newline separator)
+	rows := (m.height - 11) / 5
 	if rows < 1 {
 		rows = 1
 	}
@@ -449,22 +594,14 @@ func (m exploreModel) visibleListRows() int {
 
 // --- View ---
 
-func (m exploreModel) View() string {
+func (m exploreModel) View() tea.View {
 	if m.width == 0 {
-		return ""
+		return tea.View{Content: "", AltScreen: true}
 	}
 
 	var b strings.Builder
 
-	// Header
-	logo := termui.Violet(">") + " " + termui.Bold("my") + termui.Violet("cli")
-	title := headerStyle.Render("Explore Libraries")
-	headerLine := "  " + logo
-	padding := m.width - lipgloss.Width(logo) - lipgloss.Width(title) - 4
-	if padding > 0 {
-		headerLine += strings.Repeat(" ", padding) + title
-	}
-	b.WriteString(headerLine + "\n\n")
+	b.WriteString(m.renderHeader())
 
 	if m.view == viewList {
 		b.WriteString(m.viewList())
@@ -472,132 +609,279 @@ func (m exploreModel) View() string {
 		b.WriteString(m.viewDetail())
 	}
 
-	return b.String()
+	return tea.View{Content: b.String(), AltScreen: true}
 }
 
-func (m exploreModel) viewList() string {
-	var b strings.Builder
-	contentWidth := m.width - 4
-	if contentWidth < 20 {
-		contentWidth = 20
-	}
+// --- Header ---
 
-	// Search bar — manually pad content so border auto-sizes correctly
-	innerWidth := m.width - 6 // 2 indent + 2 border + 2 padding
+func (m exploreModel) renderHeader() string {
+	logo := termui.Violet(">") + " " + termui.Bold("my") + termui.Violet("cli")
+	title := headerTitleStyle.Render("Explore Libraries")
+	headerLine := "  " + logo
+	padding := m.width - lipgloss.Width(logo) - lipgloss.Width(title) - 4
+	if padding > 0 {
+		headerLine += strings.Repeat(" ", padding) + title
+	}
+	return headerLine + "\n\n"
+}
+
+// --- Search Box ---
+
+func (m exploreModel) renderSearchBox() string {
+	innerWidth := m.width - 6 // 2 margin + 2 border + 2 padding
 	if innerWidth < 18 {
 		innerWidth = 18
 	}
 
-	searchText := m.searchInput
-	colorStyle := lipgloss.NewStyle().Foreground(whiteColor)
+	icon := searchIconStyle.Render("🔍 ")
 	boxStyle := searchBoxStyle
+
+	var textPart string
 	if m.searchFocused {
 		boxStyle = searchBoxFocusedStyle
-		if searchText == "" {
-			colorStyle = lipgloss.NewStyle().Foreground(subtleGray)
-			searchText = "Search libraries..._"
+		if m.searchInput == "" {
+			cursor := " "
+			if m.cursorVisible {
+				cursor = lipgloss.NewStyle().Foreground(violet).Bold(true).Render("█")
+			}
+			textPart = lipgloss.NewStyle().Foreground(subtleGray).Render("Search libraries...") + cursor
 		} else {
-			searchText += "_"
+			cursor := " "
+			if m.cursorVisible {
+				cursor = lipgloss.NewStyle().Foreground(violet).Bold(true).Render("█")
+			}
+			textPart = lipgloss.NewStyle().Foreground(white).Render(m.searchInput) + cursor
 		}
-	} else if searchText == "" {
-		colorStyle = lipgloss.NewStyle().Foreground(subtleGray)
-		searchText = "Search libraries..."
+	} else if m.searchInput == "" {
+		textPart = lipgloss.NewStyle().Foreground(subtleGray).Render("Press / to search...")
+	} else {
+		textPart = lipgloss.NewStyle().Foreground(white).Render(m.searchInput)
 	}
 
-	// Pre-color and pad to exact inner width so border auto-sizes correctly
-	colored := colorStyle.Render(searchText)
-	if pad := innerWidth - lipgloss.Width(colored); pad > 0 {
-		colored += strings.Repeat(" ", pad)
+	// Right-side indicator: spinner while loading, result count otherwise
+	var rightPart string
+	if m.listLoading {
+		rightPart = searchSpinnerStyle.Render(spinnerFrames[m.spinnerFrame])
+	} else if len(m.libraries) > 0 && m.searchInput != "" {
+		rightPart = searchCountStyle.Render(fmt.Sprintf("%d results", m.totalResults))
 	}
 
-	b.WriteString(boxStyle.Render(colored) + "\n\n")
+	content := icon + textPart
+	rightWidth := lipgloss.Width(rightPart)
+	contentWidth := lipgloss.Width(content)
 
-	// Loading / error
-	if m.listLoading && len(m.libraries) == 0 {
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(subtleGray).Render("Loading...") + "\n")
-		return b.String()
+	// Pad to fill inner width (icon is already included in content)
+	gap := innerWidth - contentWidth - rightWidth
+	if gap < 0 {
+		gap = 0
 	}
-	if m.listError != "" {
-		b.WriteString("  " + errorStyle.Render("Error: "+m.listError) + "\n")
-		return b.String()
+	padded := content + strings.Repeat(" ", gap) + rightPart
+
+	return boxStyle.Render(padded) + "\n\n"
+}
+
+// --- Library Card ---
+
+func (m exploreModel) renderLibraryCard(lib client.PublicLibrary, selected bool) string {
+	innerWidth := m.width - 6 // margin + border + padding
+	if innerWidth < 20 {
+		innerWidth = 20
 	}
-	if len(m.libraries) == 0 {
+
+	// Line 1: name + badge + install count
+	name := libNameStyle.Render(lib.Slug)
+	var badge string
+	if isSystemOwner(lib.Owner) {
+		badge = badgeOfficialStyle.Render("✓ official")
+	} else {
+		badge = libOwnerStyle.Render("by " + lib.Owner)
+	}
+	if m.isInstalled(lib.Owner, lib.Slug) {
+		badge += "  " + successStyle.Render("✓ installed")
+	}
+	installs := badgeInstallCntStyle.Render("⬇ " + formatCount(lib.InstallCount))
+
+	line1 := name + "  " + badge
+	rightSide := installs
+	gap := innerWidth - lipgloss.Width(line1) - lipgloss.Width(rightSide)
+	if gap > 0 {
+		line1 += strings.Repeat(" ", gap) + rightSide
+	} else {
+		line1 += "  " + rightSide
+	}
+
+	// Line 2: description
+	desc := lib.Description
+	maxDesc := innerWidth
+	if len(desc) > maxDesc && maxDesc > 3 {
+		desc = desc[:maxDesc-3] + "..."
+	}
+	line2 := libDescStyle.Render(desc)
+	if pad := innerWidth - lipgloss.Width(line2); pad > 0 {
+		line2 += strings.Repeat(" ", pad)
+	}
+
+	// Pad line1 too
+	if pad := innerWidth - lipgloss.Width(line1); pad > 0 {
+		line1 += strings.Repeat(" ", pad)
+	}
+
+	cardContent := line1 + "\n" + line2
+
+	if selected {
+		style := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(0, 1).
+			MarginLeft(1).
+			Background(darkGray).
+			BorderForegroundBlend(violetDark, violet, cyanColor, violet, violetDark).
+			BorderForegroundBlendOffset(m.borderOffset)
+		return style.Render(cardContent)
+	}
+
+	return cardNormalStyle.Render(cardContent)
+}
+
+// --- Scroll Indicators ---
+
+func (m exploreModel) renderScrollUp(above int) string {
+	if above <= 0 {
+		return ""
+	}
+	return "  " + scrollIndicatorStyle.Render(fmt.Sprintf("▲ %d more above", above)) + "\n"
+}
+
+func (m exploreModel) renderScrollDown(below int) string {
+	if below <= 0 {
+		return ""
+	}
+	return "  " + scrollIndicatorStyle.Render(fmt.Sprintf("▼ %d more below", below)) + "\n"
+}
+
+// --- Help Bar ---
+
+func (m exploreModel) renderListHelpBar() string {
+	type helpEntry struct {
+		key  string
+		desc string
+	}
+	entries := []helpEntry{
+		{"↑↓", "navigate"},
+		{"⏎", "open"},
+		{"/", "search"},
+		{"q", "quit"},
+	}
+
+	var parts []string
+	for _, e := range entries {
+		parts = append(parts, helpKeyStyle.Render(e.key)+" "+helpDescStyle.Render(e.desc))
+	}
+
+	left := "  " + strings.Join(parts, "  ")
+
+	var right string
+	if m.listLoading {
+		right = searchSpinnerStyle.Render(spinnerFrames[m.spinnerFrame]+" searching...")
+	} else if len(m.libraries) > 0 {
+		right = positionStyle.Render(fmt.Sprintf("%d of %d", m.cursor+1, m.totalResults))
+	}
+
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
+	if gap > 0 {
+		return left + strings.Repeat(" ", gap) + right + "\n"
+	}
+	return left + "  " + right + "\n"
+}
+
+func (m exploreModel) renderDetailHelpBar() string {
+	type helpEntry struct {
+		key  string
+		desc string
+	}
+	entries := []helpEntry{
+		{"esc", "back"},
+		{"tab", "switch"},
+		{"i", "install"},
+		{"q", "quit"},
+	}
+
+	var parts []string
+	for _, e := range entries {
+		parts = append(parts, helpKeyStyle.Render(e.key)+" "+helpDescStyle.Render(e.desc))
+	}
+
+	return "  " + strings.Join(parts, "  ") + "\n"
+}
+
+// --- Empty State ---
+
+func (m exploreModel) renderEmptyState() string {
+	var b strings.Builder
+	if m.searchInput != "" {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(subtleGray).Render(fmt.Sprintf("No results for '%s'", m.searchInput)) + "\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(dimGray).Render("Try a different search term") + "\n")
+	} else {
+		b.WriteString("\n")
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(subtleGray).Render("No libraries found.") + "\n")
-		b.WriteString(m.listHelp())
+	}
+	return b.String()
+}
+
+// --- List View ---
+
+func (m exploreModel) viewList() string {
+	var b strings.Builder
+
+	b.WriteString(m.renderSearchBox())
+
+	// Loading state
+	if m.listLoading && len(m.libraries) == 0 {
+		b.WriteString("\n")
+		b.WriteString("  " + searchSpinnerStyle.Render(spinnerFrames[m.spinnerFrame]) + " " + lipgloss.NewStyle().Foreground(subtleGray).Render("Loading libraries...") + "\n")
 		return b.String()
 	}
 
-	// Library rows
+	// Error state
+	if m.listError != "" {
+		b.WriteString("\n")
+		b.WriteString("  " + errorStyle.Render("✗ "+m.listError) + "\n")
+		return b.String()
+	}
+
+	// Empty state
+	if len(m.libraries) == 0 {
+		b.WriteString(m.renderEmptyState())
+		b.WriteString("\n")
+		b.WriteString(m.renderListHelpBar())
+		return b.String()
+	}
+
+	// Card list
 	visRows := m.visibleListRows()
 	endIdx := m.scrollOffset + visRows
 	if endIdx > len(m.libraries) {
 		endIdx = len(m.libraries)
 	}
 
+	// Scroll-up indicator
+	b.WriteString(m.renderScrollUp(m.scrollOffset))
+
 	for i := m.scrollOffset; i < endIdx; i++ {
 		lib := m.libraries[i]
-		prefix := "  "
-		if i == m.cursor {
-			prefix = cursorStyle.Render("▸ ")
-		}
-
-		// First line: name + owner + installs
-		name := libNameStyle.Render(lib.Slug)
-		installs := installsStyle.Render(fmt.Sprintf("⬇ %d", lib.InstallCount))
-
-		firstLine := prefix + name
-		if !isSystemOwner(lib.Owner) {
-			firstLine += "  " + libOwnerStyle.Render("by "+lib.Owner)
-		} else {
-			firstLine += "  " + officialStyle.Render("✓ official")
-		}
-		rightSide := installs
-		gap := contentWidth - lipgloss.Width(firstLine) - lipgloss.Width(rightSide) + 2
-		if gap > 0 {
-			firstLine += strings.Repeat(" ", gap) + rightSide
-		} else {
-			firstLine += "  " + rightSide
-		}
-
-		b.WriteString(firstLine + "\n")
-
-		// Second line: description
-		desc := lib.Description
-		maxDesc := contentWidth - 2
-		if len(desc) > maxDesc && maxDesc > 3 {
-			desc = desc[:maxDesc-3] + "..."
-		}
-		b.WriteString("    " + libDescStyle.Render(desc) + "\n")
-
-		// Blank line separator
-		b.WriteString("\n")
+		b.WriteString(m.renderLibraryCard(lib, i == m.cursor) + "\n")
 	}
 
-	b.WriteString(m.listHelp())
+	// Scroll-down indicator
+	below := len(m.libraries) - endIdx
+	b.WriteString(m.renderScrollDown(below))
+
+	b.WriteString("\n")
+	b.WriteString(m.renderListHelpBar())
 	return b.String()
 }
 
-func (m exploreModel) listHelp() string {
-	var b strings.Builder
-
-	// Help + count
-	help := helpStyle.Render("↑/↓ navigate  ⏎ details  / search  q quit")
-	count := ""
-	if len(m.libraries) > 0 {
-		count = countStyle.Render(fmt.Sprintf("%d of %d", m.cursor+1, m.totalResults))
-	}
-	if m.listLoading {
-		count = countStyle.Render("searching...")
-	}
-
-	helpLine := "  " + help
-	gap := m.width - lipgloss.Width(helpLine) - lipgloss.Width(count) - 4
-	if gap > 0 {
-		helpLine += strings.Repeat(" ", gap) + count
-	}
-	b.WriteString(helpLine + "\n")
-	return b.String()
-}
+// --- Detail View ---
 
 func (m exploreModel) viewDetail() string {
 	var b strings.Builder
@@ -606,75 +890,35 @@ func (m exploreModel) viewDetail() string {
 		contentWidth = 20
 	}
 
-	// Back
-	b.WriteString("  " + helpStyle.Render("← Back") + "\n\n")
+	// Back navigation
+	b.WriteString("  " + helpKeyStyle.Render("esc") + " " + helpDescStyle.Render("back") + "\n\n")
 
+	// Loading
 	if m.detailLoading {
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(subtleGray).Render("Loading...") + "\n")
+		b.WriteString("  " + searchSpinnerStyle.Render(spinnerFrames[m.spinnerFrame]) + " " + lipgloss.NewStyle().Foreground(subtleGray).Render("Loading...") + "\n")
 		return b.String()
 	}
+
+	// Error
 	if m.detailError != "" {
-		b.WriteString("  " + errorStyle.Render("Error: "+m.detailError) + "\n")
+		b.WriteString("  " + errorStyle.Render("✗ "+m.detailError) + "\n")
 		return b.String()
 	}
+
 	if m.selectedLib == nil {
 		return b.String()
 	}
 
 	lib := m.selectedLib
 
-	// Detail card
-	cardLines := []string{
-		titleStyle.Render(lib.Library.Name),
-		m.detailMetaLine(lib),
-	}
-	if lib.Library.Description != "" {
-		cardLines = append(cardLines, libDescStyle.Render(lib.Library.Description))
-	}
-	cardContent := strings.Join(cardLines, "\n")
+	// --- Hero card ---
+	b.WriteString(m.renderHeroCard(lib))
 
-	// Pad each line to inner width so border auto-sizes correctly
-	innerWidth := m.width - 6 // 2 indent + 2 border + 2 padding
-	if innerWidth < 18 {
-		innerWidth = 18
-	}
-	lines := strings.Split(cardContent, "\n")
-	for i, line := range lines {
-		if pad := innerWidth - lipgloss.Width(line); pad > 0 {
-			lines[i] = line + strings.Repeat(" ", pad)
-		}
-	}
-	b.WriteString(detailCardStyle.Render(strings.Join(lines, "\n")) + "\n\n")
+	// --- Tab bar ---
+	b.WriteString(m.renderTabBar(lib))
 
-	// Tabs
-	var cmdTab, relTab string
-	cmdCount := len(lib.Commands)
-	relCount := len(m.releases)
-
-	if m.detailTab == 0 {
-		cmdTab = activeTabStyle.Render("[Commands]")
-		relTab = inactiveTabStyle.Render(" Releases")
-	} else {
-		cmdTab = inactiveTabStyle.Render(" Commands ")
-		relTab = activeTabStyle.Render("[Releases]")
-	}
-
-	tabRight := ""
-	if m.detailTab == 0 {
-		tabRight = countStyle.Render(fmt.Sprintf("%d commands", cmdCount))
-	} else {
-		tabRight = countStyle.Render(fmt.Sprintf("%d releases", relCount))
-	}
-
-	tabLine := "  " + cmdTab + relTab
-	gap := m.width - lipgloss.Width(tabLine) - lipgloss.Width(tabRight) - 4
-	if gap > 0 {
-		tabLine += strings.Repeat(" ", gap) + tabRight
-	}
-	b.WriteString(tabLine + "\n\n")
-
-	// Tab content
-	availableRows := m.height - 14
+	// --- Tab content ---
+	availableRows := m.height - 18
 	if availableRows < 1 {
 		availableRows = 1
 	}
@@ -687,42 +931,142 @@ func (m exploreModel) viewDetail() string {
 
 	// Install message
 	if m.installMsg != "" {
-		if strings.HasPrefix(m.installMsg, "Error:") || strings.HasPrefix(m.installMsg, "Installing") {
-			if strings.HasPrefix(m.installMsg, "Error:") {
-				b.WriteString("  " + errorStyle.Render(m.installMsg) + "\n")
-			} else {
-				b.WriteString("  " + lipgloss.NewStyle().Foreground(subtleGray).Render(m.installMsg) + "\n")
-			}
-		} else {
-			b.WriteString("  " + successStyle.Render(m.installMsg) + "\n")
+		b.WriteString("\n")
+		if strings.HasPrefix(m.installMsg, "error:") {
+			b.WriteString("  " + errorStyle.Render("✗ "+m.installMsg[6:]) + "\n")
+		} else if strings.HasPrefix(m.installMsg, "ok:") {
+			b.WriteString("  " + successStyle.Render("✓ Installed "+m.installMsg[3:]) + "\n")
 		}
 	}
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString("  " + helpStyle.Render("esc back  tab switch  i install  q quit") + "\n")
+	b.WriteString(m.renderDetailHelpBar())
 
 	return b.String()
 }
 
-func (m exploreModel) detailMetaLine(lib *client.PublicLibraryDetail) string {
-	var parts []string
+// --- Hero Card ---
+
+func (m exploreModel) renderHeroCard(lib *client.PublicLibraryDetail) string {
+	innerWidth := m.width - 8 // margin + border + padding(2 each side)
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
+
+	// Title
+	titleLine := libNameStyle.Bold(true).Render(lib.Library.Name)
+
+	// Meta line: badge · installs · version
+	var metaParts []string
 	if isSystemOwner(lib.Owner) {
-		parts = append(parts, officialStyle.Render("✓ official"))
+		metaParts = append(metaParts, badgeOfficialStyle.Render("✓ official"))
 	} else {
-		parts = append(parts, "by "+lib.Owner)
+		metaParts = append(metaParts, libOwnerStyle.Render("by "+lib.Owner))
 	}
-	grayParts := []string{fmt.Sprintf("%d installs", lib.Library.InstallCount)}
+	metaParts = append(metaParts, badgeInstallCntStyle.Render(formatCount(lib.Library.InstallCount)+" installs"))
 	if len(m.releases) > 0 {
-		grayParts = append(grayParts, m.releases[0].Tag)
+		metaParts = append(metaParts, badgeVersionStyle.Render(m.releases[0].Tag))
 	}
-	parts = append(parts, libOwnerStyle.Render(strings.Join(grayParts, " · ")))
-	return strings.Join(parts, " · ")
+	metaLine := strings.Join(metaParts, "  ·  ")
+
+	// Description
+	descLine := ""
+	if lib.Library.Description != "" {
+		descLine = libDescStyle.Render(lib.Library.Description)
+	}
+
+	// Install button
+	var btnLine string
+	if m.installing {
+		btnLine = installBtnActiveStyle.Render(spinnerFrames[m.spinnerFrame] + " Installing...")
+	} else if strings.HasPrefix(m.installMsg, "ok:") || m.isInstalled(lib.Owner, lib.Library.Slug) {
+		btnLine = installBtnDoneStyle.Render("✓ Installed")
+	} else {
+		btnLine = installBtnStyle.Render("⬇ Install")
+	}
+
+	// Build card content
+	var lines []string
+	lines = append(lines, titleLine)
+	lines = append(lines, metaLine)
+	if descLine != "" {
+		lines = append(lines, "")
+		lines = append(lines, descLine)
+	}
+	lines = append(lines, "")
+	lines = append(lines, btnLine)
+
+	// Pad lines to fill width
+	for i, line := range lines {
+		if pad := innerWidth - lipgloss.Width(line); pad > 0 {
+			lines[i] = line + strings.Repeat(" ", pad)
+		}
+	}
+	cardContent := strings.Join(lines, "\n")
+
+	style := detailHeroStyle.
+		BorderForegroundBlend(violetDark, violet, cyanColor, violet, violetDark).
+		BorderForegroundBlendOffset(m.borderOffset)
+
+	return style.Render(cardContent) + "\n\n"
 }
+
+// --- Tab Bar ---
+
+func (m exploreModel) renderTabBar(lib *client.PublicLibraryDetail) string {
+	cmdCount := len(lib.Commands)
+	relCount := len(m.releases)
+
+	var cmdTab, relTab string
+	if m.detailTab == 0 {
+		cmdTab = tabActiveStyle.Render("Commands")
+		relTab = tabInactiveStyle.Render("Releases")
+	} else {
+		cmdTab = tabInactiveStyle.Render("Commands")
+		relTab = tabActiveStyle.Render("Releases")
+	}
+
+	// Underlines
+	cmdWidth := lipgloss.Width(cmdTab)
+	relWidth := lipgloss.Width(relTab)
+
+	var cmdUnder, relUnder string
+	if m.detailTab == 0 {
+		cmdUnder = lipgloss.NewStyle().Foreground(violet).Render(strings.Repeat("━", cmdWidth))
+		relUnder = tabLineStyle.Render(strings.Repeat("─", relWidth))
+	} else {
+		cmdUnder = tabLineStyle.Render(strings.Repeat("─", cmdWidth))
+		relUnder = lipgloss.NewStyle().Foreground(violet).Render(strings.Repeat("━", relWidth))
+	}
+
+	gap := "     "
+
+	// Right-side count
+	var countText string
+	if m.detailTab == 0 {
+		countText = lipgloss.NewStyle().Foreground(subtleGray).Render(fmt.Sprintf("%d commands", cmdCount))
+	} else {
+		countText = lipgloss.NewStyle().Foreground(subtleGray).Render(fmt.Sprintf("%d releases", relCount))
+	}
+
+	// Fill remaining with dim line
+	tabLine := "   " + cmdTab + gap + relTab
+	underLine := "   " + cmdUnder + tabLineStyle.Render(strings.Repeat("─", len(gap))) + relUnder
+
+	fillWidth := m.width - lipgloss.Width(underLine) - lipgloss.Width(countText) - 4
+	if fillWidth > 0 {
+		underLine += tabLineStyle.Render(strings.Repeat("─", fillWidth)) + countText
+	}
+
+	return tabLine + "\n" + underLine + "\n\n"
+}
+
+// --- Commands Table ---
 
 func (m exploreModel) renderCommands(cmds []client.LibraryCommand, width, maxRows int) string {
 	if len(cmds) == 0 {
-		return "  " + lipgloss.NewStyle().Foreground(subtleGray).Render("No commands.") + "\n"
+		return "   " + lipgloss.NewStyle().Foreground(subtleGray).Render("No commands.") + "\n"
 	}
 
 	var b strings.Builder
@@ -736,6 +1080,11 @@ func (m exploreModel) renderCommands(cmds []client.LibraryCommand, width, maxRow
 		end = len(cmds)
 	}
 
+	// Scroll-up indicator
+	if scroll > 0 {
+		b.WriteString("   " + scrollIndicatorStyle.Render(fmt.Sprintf("▲ %d more above", scroll)) + "\n")
+	}
+
 	// Find max slug width for alignment
 	maxSlug := 0
 	for _, cmd := range cmds[scroll:end] {
@@ -744,26 +1093,41 @@ func (m exploreModel) renderCommands(cmds []client.LibraryCommand, width, maxRow
 		}
 	}
 
-	for _, cmd := range cmds[scroll:end] {
-		slug := libNameStyle.Render(fmt.Sprintf("%-*s", maxSlug, cmd.Slug))
-		desc := libDescStyle.Render(cmd.Description)
-		maxDesc := width - maxSlug - 6
-		if len(cmd.Description) > maxDesc && maxDesc > 3 {
-			desc = libDescStyle.Render(cmd.Description[:maxDesc-3] + "...")
+	for idx, cmd := range cmds[scroll:end] {
+		slug := cmdSlugStyle.Render(fmt.Sprintf("%-*s", maxSlug, cmd.Slug))
+		desc := cmd.Description
+		maxDesc := width - maxSlug - 8
+		if len(desc) > maxDesc && maxDesc > 3 {
+			desc = desc[:maxDesc-3] + "..."
 		}
-		b.WriteString("  " + slug + "  " + desc + "\n")
+		renderedDesc := cmdDescStyle.Render(desc)
+
+		// Alternating row backgrounds
+		row := "   " + slug + "    " + renderedDesc
+		if idx%2 == 1 {
+			bgStyle := lipgloss.NewStyle().Background(darkerGray)
+			rowWidth := lipgloss.Width(row)
+			if pad := width - rowWidth + 2; pad > 0 {
+				row += strings.Repeat(" ", pad)
+			}
+			row = bgStyle.Render(row)
+		}
+		b.WriteString(row + "\n")
 	}
 
-	if end < len(cmds) {
-		b.WriteString("  " + countStyle.Render(fmt.Sprintf("... %d more", len(cmds)-end)) + "\n")
+	// Scroll-down indicator
+	if below := len(cmds) - end; below > 0 {
+		b.WriteString("   " + scrollIndicatorStyle.Render(fmt.Sprintf("▼ %d more", below)) + "\n")
 	}
 
 	return b.String()
 }
 
+// --- Releases Timeline ---
+
 func (m exploreModel) renderReleases(releases []client.LibraryReleaseInfo, width, maxRows int) string {
 	if len(releases) == 0 {
-		return "  " + lipgloss.NewStyle().Foreground(subtleGray).Render("No releases.") + "\n"
+		return "   " + lipgloss.NewStyle().Foreground(subtleGray).Render("No releases.") + "\n"
 	}
 
 	var b strings.Builder
@@ -772,16 +1136,58 @@ func (m exploreModel) renderReleases(releases []client.LibraryReleaseInfo, width
 		scroll = max(0, len(releases)-1)
 	}
 
-	end := scroll + maxRows
+	// Account for scroll-up indicator stealing a row
+	effectiveRows := maxRows
+	if scroll > 0 {
+		effectiveRows--
+	}
+	if effectiveRows < 1 {
+		effectiveRows = 1
+	}
+
+	// N releases take 2N-1 visual lines (item + connector between each pair).
+	// Solve: 2*items - 1 <= effectiveRows → items <= (effectiveRows+1)/2
+	end := scroll + (effectiveRows+1)/2
 	if end > len(releases) {
 		end = len(releases)
 	}
 
-	for _, rel := range releases[scroll:end] {
-		tag := libNameStyle.Render(fmt.Sprintf("%-12s", rel.Tag))
-		date := libOwnerStyle.Render(rel.ReleasedAt)
-		cmds := countStyle.Render(fmt.Sprintf("%d commands", rel.CommandCount))
-		b.WriteString("  " + tag + "  " + date + "  " + cmds + "\n")
+	// Scroll-up indicator
+	if scroll > 0 {
+		b.WriteString("   " + scrollIndicatorStyle.Render(fmt.Sprintf("▲ %d more above", scroll)) + "\n")
+	}
+
+	for i, rel := range releases[scroll:end] {
+		globalIdx := scroll + i
+
+		// Timeline dot
+		var dot string
+		if globalIdx == 0 {
+			dot = timelineDotLatest.Render("●")
+		} else {
+			dot = timelineDotOlder.Render("○")
+		}
+
+		// Version badge
+		tag := releaseTagStyle.Render(rel.Tag)
+
+		// Date
+		date := releaseDateStyle.Render(rel.ReleasedAt)
+
+		// Command count
+		cmds := releaseCmdStyle.Render(fmt.Sprintf("%d commands", rel.CommandCount))
+
+		b.WriteString("   " + dot + "  " + tag + "  " + date + "  " + cmds + "\n")
+
+		// Connector to next item
+		if i < len(releases[scroll:end])-1 {
+			b.WriteString("   " + timelineConnector.Render("│") + "\n")
+		}
+	}
+
+	// Scroll-down indicator
+	if below := len(releases) - end; below > 0 {
+		b.WriteString("   " + scrollIndicatorStyle.Render(fmt.Sprintf("▼ %d more", below)) + "\n")
 	}
 
 	return b.String()
@@ -801,10 +1207,19 @@ func newLibraryExploreCmd() *cobra.Command {
 			c := client.New(resolveAPIURL(cfg))
 			defer c.Close()
 
+			installed := make(map[string]struct{})
+			if reg, err := library.LoadRegistry(); err == nil {
+				for _, s := range reg.Sources {
+					installed[installedKey(s.Owner, s.Slug)] = struct{}{}
+				}
+			}
+
 			m := exploreModel{
 				apiClient:     c,
 				listLoading:   true,
 				searchFocused: false,
+				cursorVisible: true,
+				installedSet:  installed,
 			}
 
 			p := tea.NewProgram(m)
