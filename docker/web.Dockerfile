@@ -8,6 +8,7 @@ RUN bun install --frozen-lockfile
 COPY web/ .
 
 ENV VITE_API_URL=__API_URL_PLACEHOLDER__
+ENV VITE_APP_URL=__APP_URL_PLACEHOLDER__
 RUN bun run build
 
 FROM nginx:alpine
