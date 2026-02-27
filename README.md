@@ -85,7 +85,6 @@ Installed library commands are available as top-level subcommands: `my <library>
 
 **Global flags:**
 - `--api-url` — Override the API server URL
-- `--config` — Override the config file path
 
 **Command-specific flags:**
 
@@ -101,7 +100,6 @@ Installed library commands are available as top-level subcommands: `my <library>
 | `cli init` | `--force` | Overwrite existing spec file |
 | `source add` | `--ref` | Git branch or tag to checkout |
 | `source add` | `--name` | Alias for the source (defaults to repo name) |
-| `source list` | `--json` | Output as JSON |
 | `library list` | `--json` | Output as JSON |
 
 ## Command Spec Format
@@ -248,6 +246,9 @@ make dev                      # Build and start on :8080
 | `BASE_URL` | `http://localhost:8080` | Public base URL (used in emails) |
 | `RESEND_API_KEY` | _(empty)_ | Resend API key for sending emails. When unset, emails are printed to stdout |
 | `EMAIL_FROM` | `mycli@updates.mycli.sh` | Sender address for emails |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS allowed origins |
+| `WEB_BASE_URL` | `http://localhost:5173` | Web frontend base URL |
+| `SYSTEM_ADMIN_EMAILS` | _(empty)_ | Comma-separated system admin emails |
 
 ### Endpoints
 
@@ -264,8 +265,6 @@ make dev                      # Build and start on :8080
 | `POST` | `/v1/auth/web/login` | Start web auth flow |
 | `POST` | `/v1/auth/web/verify` | Verify web auth |
 | `GET` | `/v1/usernames/{username}/available` | Check username availability |
-| `GET` | `/device` | Device verification page |
-| `POST` | `/device` | Device verification submit |
 | `GET` | `/health` | Health check |
 
 **Library browsing (optional auth):**
@@ -288,6 +287,7 @@ make dev                      # Build and start on :8080
 | `GET` | `/v1/sessions` | List sessions |
 | `DELETE` | `/v1/sessions/{id}` | Revoke a session |
 | `DELETE` | `/v1/sessions` | Revoke all sessions |
+| `POST` | `/v1/auth/logout` | Log out (revoke current session) |
 
 **Authenticated (username required):**
 
