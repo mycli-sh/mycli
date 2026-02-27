@@ -57,6 +57,7 @@ All management subcommands live under `cli`:
 | `cli run [-f file \| slug] [args...]` | Run a cached command (or directly from a spec file with `-f`) |
 | `cli status` | Show API URL, login state, last sync time, cached command count |
 | `cli history` | Show run history |
+| `cli set-api-url [url]` | Set custom API URL (`--reset` to revert to default) |
 
 ### Sources (git-backed)
 
@@ -78,6 +79,7 @@ All management subcommands live under `cli`:
 | `library explore` | Interactive TUI for browsing libraries |
 | `library info <identifier>` | Show library details |
 | `library release <tag>` | Create a versioned release from a git tag |
+| `library sync` | Sync registry libraries with server |
 
 Installed library commands are available as top-level subcommands: `my <library> <command>`.
 
@@ -364,4 +366,4 @@ api/internal/email/           Email sender (Resend / dev log)
 pkg/spec/                    Shared: CommandSpec types, JSON Schema validation, parsing, hashing
 ```
 
-Config and credentials are stored under `~/.my/`. Database IDs use prefixed UUIDs (`usr_`, `cmd_`, `cv_`, `ml_`, `lib_`).
+Config and credentials are stored under `~/.my/`. Database IDs use native PostgreSQL UUIDs (UUIDv7).
