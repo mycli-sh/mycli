@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -131,7 +132,8 @@ func executeStep(s *spec.CommandSpec, step *spec.Step, data templateData, opts E
 	}
 
 	// Render the run script
-	script, err := renderTemplate(step.Run, data)
+	leftDelim, rightDelim := s.Defaults.GetTemplateDelimiters()
+	script, err := renderTemplate(step.Run, data, leftDelim, rightDelim)
 	if err != nil {
 		return 1, fmt.Errorf("template render error: %w", err)
 	}
@@ -147,7 +149,7 @@ func executeStep(s *spec.CommandSpec, step *spec.Step, data templateData, opts E
 	env := os.Environ()
 	if s.Defaults != nil {
 		for k, v := range s.Defaults.Env {
-			rendered, err := renderTemplate(v, data)
+			rendered, err := renderTemplate(v, data, leftDelim, rightDelim)
 			if err != nil {
 				return 1, fmt.Errorf("env template render error for %s: %w", k, err)
 			}
@@ -155,7 +157,7 @@ func executeStep(s *spec.CommandSpec, step *spec.Step, data templateData, opts E
 		}
 	}
 	for k, v := range step.Env {
-		rendered, err := renderTemplate(v, data)
+		rendered, err := renderTemplate(v, data, leftDelim, rightDelim)
 		if err != nil {
 			return 1, fmt.Errorf("env template render error for %s: %w", k, err)
 		}
@@ -315,16 +317,16 @@ func parseArgs(s *spec.CommandSpec, rawArgs []string) (templateData, error) {
 	return data, nil
 }
 
-func renderTemplate(text string, data templateData) (string, error) {
-	// Replace {{.args.X}} style with {{.Args.X}} for Go templates
-	// We use a custom delim-free approach: just use Go templates directly
-	tmpl, err := template.New("cmd").Option("missingkey=error").Parse(text)
+func renderTemplate(text string, data templateData, leftDelim, rightDelim string) (string, error) {
+	tmpl, err := template.New("cmd").
+		Option("missingkey=error").
+		Delims(leftDelim, rightDelim).
+		Parse(text)
 	if err != nil {
-		return "", fmt.Errorf("template parse error: %w", err)
+		return "", enhanceTemplateError(err, text, leftDelim)
 	}
 
 	var buf strings.Builder
-	// Create context with lowercase field aliases
 	ctx := map[string]any{
 		"args": data.Args,
 		"env":  data.Env,
@@ -332,9 +334,31 @@ func renderTemplate(text string, data templateData) (string, error) {
 		"home": data.Home,
 	}
 	if err := tmpl.Execute(&buf, ctx); err != nil {
-		return "", fmt.Errorf("template execute error: %w", err)
+		return "", enhanceTemplateError(err, text, leftDelim)
 	}
 	return buf.String(), nil
+}
+
+// mycliExprPattern matches mycli template expressions like {{.args.x}}, {{.env.x}}, {{.cwd}}, {{.home}}.
+var mycliExprPattern = regexp.MustCompile(`\{\{\s*\.(?:args|env|cwd|home)\b`)
+
+func enhanceTemplateError(err error, text string, currentLeftDelim string) error {
+	if currentLeftDelim != "{{" {
+		return fmt.Errorf("template parse error: %w", err)
+	}
+	// Check if the text contains {{ beyond just mycli expressions
+	total := strings.Count(text, "{{")
+	mycliCount := len(mycliExprPattern.FindAllString(text, -1))
+	if total > mycliCount {
+		return fmt.Errorf( //nolint:staticcheck // multiline hint is intentional
+			"template parse error: %w\n\n"+
+				"  hint: the run block contains '{{...}}' patterns that conflict with mycli's template engine\n"+
+				"  To use literal '{{' in your scripts, set custom delimiters in your spec:\n\n"+
+				"    defaults:\n"+
+				"      templateDelimiters: [\"<%%\", \"%%>\"]\n\n"+
+				"  Then use <%% .args.x %%> for mycli expressions", err)
+	}
+	return fmt.Errorf("template parse error: %w", err)
 }
 
 func checkAllowedExecutables(script string, allowed []string) error {

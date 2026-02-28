@@ -193,11 +193,27 @@ func parseOwnerSlug(identifier string) (string, string) {
 	return "system", identifier
 }
 
+func completeInstalledLibraries(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	reg, err := library.LoadRegistry()
+	if err != nil || reg == nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var names []string
+	for _, entry := range reg.Sources {
+		names = append(names, entry.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
 func newLibraryUninstallCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "uninstall <name>",
-		Short: "Uninstall a registry library",
-		Args:  cobra.ExactArgs(1),
+		Use:               "uninstall <name>",
+		Short:             "Uninstall a registry library",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeInstalledLibraries,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -430,9 +446,10 @@ func getGitRemoteURL(dir string) (string, error) {
 
 func newLibraryInfoCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <identifier>",
-		Short: "Show details about a library",
-		Args:  cobra.ExactArgs(1),
+		Use:               "info <identifier>",
+		Short:             "Show details about a library",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeInstalledLibraries,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			identifier := args[0]
 

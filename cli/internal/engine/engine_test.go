@@ -73,12 +73,78 @@ func TestRenderTemplate(t *testing.T) {
 		Home: "/home/user",
 	}
 
-	result, err := renderTemplate("echo deploying {{.args.service}} to {{.args.env}}", data)
+	result, err := renderTemplate("echo deploying {{.args.service}} to {{.args.env}}", data, "{{", "}}")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != "echo deploying myapp to staging" {
 		t.Errorf("unexpected result: %s", result)
+	}
+}
+
+func TestRenderTemplate_CustomDelimiters(t *testing.T) {
+	data := templateData{
+		Args: map[string]any{"ns": "default"},
+		Cwd:  "/tmp",
+		Home: "/home/user",
+	}
+
+	// With custom delimiters, {{range .items}} should pass through as literal text
+	text := `kubectl get pods -n <% .args.ns %> -o go-template='{{range .items}}{{.metadata.name}}{{end}}'`
+	result, err := renderTemplate(text, data, "<%", "%>")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `kubectl get pods -n default -o go-template='{{range .items}}{{.metadata.name}}{{end}}'`
+	if result != expected {
+		t.Errorf("unexpected result:\n  got:  %s\n  want: %s", result, expected)
+	}
+}
+
+func TestRenderTemplate_ErrorHintForConflictingTemplates(t *testing.T) {
+	data := templateData{
+		Args: map[string]any{},
+		Cwd:  "/tmp",
+		Home: "/home/user",
+	}
+
+	// This contains {{range .items}} which conflicts with default delimiters
+	text := `kubectl get pods -o go-template='{{range .items}}{{.metadata.name}}{{end}}'`
+	_, err := renderTemplate(text, data, "{{", "}}")
+	if err == nil {
+		t.Fatal("expected error for conflicting template syntax")
+	}
+	if !strings.Contains(err.Error(), "hint:") {
+		t.Errorf("expected error hint, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "templateDelimiters") {
+		t.Errorf("expected error to mention templateDelimiters, got: %v", err)
+	}
+}
+
+func TestGetTemplateDelimiters_Default(t *testing.T) {
+	// nil Defaults
+	var d *spec.Defaults
+	left, right := d.GetTemplateDelimiters()
+	if left != "{{" || right != "}}" {
+		t.Errorf("expected default delimiters, got %q %q", left, right)
+	}
+
+	// Empty Defaults
+	d = &spec.Defaults{}
+	left, right = d.GetTemplateDelimiters()
+	if left != "{{" || right != "}}" {
+		t.Errorf("expected default delimiters, got %q %q", left, right)
+	}
+}
+
+func TestGetTemplateDelimiters_Custom(t *testing.T) {
+	d := &spec.Defaults{
+		TemplateDelimiters: []string{"<%", "%>"},
+	}
+	left, right := d.GetTemplateDelimiters()
+	if left != "<%" || right != "%>" {
+		t.Errorf("expected custom delimiters, got %q %q", left, right)
 	}
 }
 

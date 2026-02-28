@@ -25,9 +25,19 @@ type Metadata struct {
 }
 
 type Defaults struct {
-	Shell   string            `json:"shell,omitempty"`
-	Timeout string            `json:"timeout,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+	Shell              string            `json:"shell,omitempty"`
+	Timeout            string            `json:"timeout,omitempty"`
+	Env                map[string]string `json:"env,omitempty"`
+	TemplateDelimiters []string          `json:"templateDelimiters,omitempty"`
+}
+
+// GetTemplateDelimiters returns the left and right template delimiters.
+// Falls back to Go's default "{{" / "}}" when not configured.
+func (d *Defaults) GetTemplateDelimiters() (string, string) {
+	if d != nil && len(d.TemplateDelimiters) == 2 {
+		return d.TemplateDelimiters[0], d.TemplateDelimiters[1]
+	}
+	return "{{", "}}"
 }
 
 type Args struct {

@@ -32,6 +32,22 @@ Use -f to run a spec file directly without pushing:
   my cli run -f command.yaml
   my cli run -f .                  (auto-detect spec in current directory)`,
 		Args: cobra.ArbitraryArgs,
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) > 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			catalog, err := cache.GetCatalog()
+			if err != nil || catalog == nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			var slugs []string
+			for _, item := range catalog.Items {
+				if item.Library == "" {
+					slugs = append(slugs, item.Slug)
+				}
+			}
+			return slugs, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if file != "" {
 				if file == "." {

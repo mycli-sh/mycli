@@ -139,11 +139,29 @@ func addGitSource(url, ref, nameOverride string) error {
 	return nil
 }
 
+func completeSourceNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	reg, err := library.LoadRegistry()
+	if err != nil || reg == nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var names []string
+	for _, entry := range reg.Sources {
+		if entry.Kind == "git" {
+			names = append(names, entry.Name)
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
 func newSourceRemoveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "remove <name>",
-		Short: "Remove a git-backed source",
-		Args:  cobra.ExactArgs(1),
+		Use:               "remove <name>",
+		Short:             "Remove a git-backed source",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeSourceNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -214,10 +232,11 @@ func newSourceListCmd() *cobra.Command {
 
 func newSourceUpdateCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "update [name]",
-		Short: "Update git sources",
-		Long:  "Pull the latest changes from all git sources, or a specific one by name.",
-		Args:  cobra.MaximumNArgs(1),
+		Use:               "update [name]",
+		Short:             "Update git sources",
+		Long:              "Pull the latest changes from all git sources, or a specific one by name.",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeSourceNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reg, err := library.LoadRegistry()
 			if err != nil {

@@ -67,6 +67,13 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "templateDelimiters": {
+          "type": "array",
+          "description": "Custom left/right delimiters for template expressions (default: ['{{', '}}'])",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 2,
+          "maxItems": 2
         }
       }
     },
