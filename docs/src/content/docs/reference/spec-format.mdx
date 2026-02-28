@@ -44,6 +44,7 @@ defaults:
   timeout: 5m
   env:
     APP_NAME: myapp
+  templateDelimiters: ["<%", "%>"]  # Custom template delimiters (default: ["{{", "}}"])
 
 steps:
   - name: validate
@@ -126,6 +127,7 @@ Array of named flag definitions.
 | `shell` | `string` | Default shell for all steps (e.g., `/bin/bash`) |
 | `timeout` | `string` | Default timeout for all steps (e.g., `30s`, `5m`) |
 | `env` | `object` | Default environment variables for all steps |
+| `templateDelimiters` | `string[]` | Custom left/right delimiters for template expressions (default: `["{{", "}}"]`). Must be a 2-element array. See [Template Variables](/guides/template-variables/) for details. |
 
 ## steps
 

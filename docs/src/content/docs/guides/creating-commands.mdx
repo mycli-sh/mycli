@@ -133,6 +133,8 @@ defaults:
     APP_NAME: myapp
 ```
 
+You can also set `templateDelimiters` to use custom delimiters instead of `{{` / `}}` — useful when your commands contain tools like `kubectl` that use the same syntax. See [Template Variables](/guides/template-variables/#custom-delimiters) for details.
+
 ## Steps
 
 Each step runs one or more shell commands:

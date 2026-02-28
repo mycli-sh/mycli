@@ -94,6 +94,32 @@ steps:
       - ./build.sh
 ```
 
+## Custom delimiters
+
+Some tools — like `kubectl` go-templates or Helm — also use `{{` and `}}`, which conflicts with mycli's template syntax. You can set custom delimiters in `defaults` to avoid this:
+
+```yaml
+defaults:
+  templateDelimiters: ["<%", "%>"]
+```
+
+With custom delimiters, templates use `<%` and `%>` instead:
+
+```yaml title="port-forward.yaml"
+defaults:
+  templateDelimiters: ["<%", "%>"]
+
+steps:
+  - name: forward
+    run:
+      - >-
+        kubectl port-forward
+        $(kubectl get pod -l app=<%.args.app%> -o jsonpath='{{.items[0].metadata.name}}')
+        <%.args.port%>
+```
+
+This lets `{{...}}` pass through to `kubectl` unmodified while mycli still renders `<%...%>` expressions.
+
 ## Next steps
 
 <LinkCard title="Creating Commands" description="Full spec authoring guide." href="/guides/creating-commands/" />

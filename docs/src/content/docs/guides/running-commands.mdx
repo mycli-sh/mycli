@@ -38,12 +38,30 @@ If a command has `requireConfirmation: true` in its policy, use `-y` to skip the
 my cli run deploy -y -- production
 ```
 
+## Interactive picker
+
+Running `my cli run` with no arguments opens an interactive picker:
+
+```bash
+my cli run
+```
+
+The picker searches across all sources: local spec files in the current directory, personal (synced) commands, installed libraries, and git sources.
+
+If the terminal is not a TTY (e.g., inside a script or CI), the command prints a table of available commands instead.
+
 ## Run from a file
 
 Run a spec file directly without pushing to the registry:
 
 ```bash
 my cli run -f command.yaml -- production
+```
+
+You can also pass a directory to `-f` to auto-detect a spec file in the current directory:
+
+```bash
+my cli run -f .
 ```
 
 This is useful for local development and testing.

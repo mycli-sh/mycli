@@ -54,7 +54,7 @@ All management subcommands live under `cli`:
 | `cli init [name]` | Scaffold a `command.yaml` file (with name: creates subdirectory) |
 | `cli push` | Validate and publish a command spec to the server |
 | `cli show <slug>` | Show details of a cached command |
-| `cli run [-f file \| slug] [args...]` | Run a cached command (or directly from a spec file with `-f`) |
+| `cli run [-f file \| slug] [args...]` | Run a cached command (or directly from a spec file with `-f`). With no args, opens an interactive picker |
 | `cli status` | Show API URL, login state, last sync time, cached command count |
 | `cli history` | Show run history |
 | `cli set-api-url [url]` | Set custom API URL (`--reset` to revert to default) |
@@ -155,7 +155,7 @@ Commands are defined as YAML or JSON files validated against a [JSON Schema](pkg
 | `metadata` | yes | `name`, `slug` (required); `description`, `tags`, `aliases` (optional). Slugs must match `^[a-z][a-z0-9-]*$` |
 | `dependencies` | no | Array of required binary dependencies (e.g., `["curl", "jq"]`). Checked before execution |
 | `args` | no | `positional` (ordered list) and `flags` (named options with optional `short`, `type`, `default`) |
-| `defaults` | no | Default `shell`, `timeout`, and `env` vars applied to all steps |
+| `defaults` | no | Default `shell`, `timeout`, `env` vars, and `templateDelimiters` applied to all steps |
 | `steps` | yes | Array of steps (min 1). Each has `name`, `run` (required); `env`, `timeout`, `shell`, `continueOnError` (optional) |
 | `policy` | no | `requireConfirmation` prompts before running; `allowedExecutables` restricts which binaries can be invoked |
 
@@ -173,6 +173,8 @@ Step `run` lines and `env` values are rendered as Go templates:
 | `{{.env.X}}` | Environment variable value |
 | `{{.cwd}}` | Current working directory |
 | `{{.home}}` | User's home directory |
+
+Custom delimiters (e.g., `["<%", "%>"]`) can be set via `defaults.templateDelimiters` to avoid conflicts with tools like `kubectl` or Helm that also use `{{` `}}`.
 
 ## Source Repos
 
