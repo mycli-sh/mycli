@@ -22,6 +22,8 @@ libraries:
     name: Kubernetes
     description: Kubernetes helper commands
     path: k8s
+    aliases:
+      - k
 ```
 
 ## Fields
@@ -42,6 +44,7 @@ Each key in `libraries` is the library slug, which must match `^[a-z][a-z0-9-]*$
 | `name` | Yes | `string` | Human-readable library name |
 | `description` | No | `string` | Library description |
 | `path` | Yes | `string` | Relative path to the directory containing command spec files |
+| `aliases` | No | `string[]` | Alternative slugs for the library (e.g., `["k"]` for `k8s`) |
 
 ## Directory layout
 

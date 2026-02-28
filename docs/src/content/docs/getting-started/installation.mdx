@@ -45,6 +45,26 @@ my --help
 
 You should see the top-level help output listing available commands.
 
+## Shell completion
+
+Enable tab completion for commands, arguments, and flags by generating a completion script for your shell:
+
+```bash
+# Bash
+my completion bash > /etc/bash_completion.d/my
+
+# Zsh
+my completion zsh > "${fpath[1]}/_my"
+
+# Fish
+my completion fish > ~/.config/fish/completions/my.fish
+
+# PowerShell
+my completion powershell > my.ps1
+```
+
+After installing the script, restart your shell (or source the file) to activate completions. Tab completion works for command names, subcommands, and arguments like command slugs, library names, and source names.
+
 ## Next steps
 
 <LinkCard title="Quickstart" description="Create and run your first command." href="/getting-started/quickstart/" />
