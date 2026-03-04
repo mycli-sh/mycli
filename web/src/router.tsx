@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router";
 import { RootLayout } from "./components/layout/root-layout";
+import { PostHogPageview } from "./components/posthog-pageview";
 import { AuthGuard } from "./lib/auth";
 import { Home } from "./pages/home";
 import { LibraryDetailPage } from "./pages/library-detail";
@@ -13,6 +14,7 @@ import { SetupUsername } from "./pages/setup-username";
 export function AppRouter() {
   return (
     <BrowserRouter>
+      <PostHogPageview />
       <Routes>
         <Route element={<RootLayout />}>
           <Route index element={<Home />} />
