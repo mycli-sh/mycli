@@ -17,3 +17,8 @@ fi
 if [ -n "$VITE_APP_URL" ]; then
   sed -i "s|__APP_URL_PLACEHOLDER__|${VITE_APP_URL}|g" /usr/share/nginx/html/index.html
 fi
+
+# Replace PostHog key placeholder in built JS files
+# If VITE_POSTHOG_KEY is unset, replaces with empty string (PostHog stays disabled)
+find /usr/share/nginx/html/assets -name '*.js' -exec \
+  sed -i "s|__POSTHOG_KEY_PLACEHOLDER__|${VITE_POSTHOG_KEY:-}|g" {} +
