@@ -1,9 +1,11 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import posthog from "./posthog.integration.mjs";
 
 export default defineConfig({
   site: "https://docs.mycli.sh",
   integrations: [
+    posthog(),
     starlight({
       title: "mycli",
       logo: {
