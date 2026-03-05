@@ -1,9 +1,9 @@
-import type PostHogJs from "posthog-js";
+import type { PostHog } from "posthog-js";
 
 const key = import.meta.env.VITE_POSTHOG_KEY;
 const host = import.meta.env.VITE_POSTHOG_HOST || "https://us.i.posthog.com";
 
-let posthog: PostHogJs | undefined;
+let posthog: PostHog | undefined;
 
 if (key) {
   const mod = await import("posthog-js");
