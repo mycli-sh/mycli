@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -12,39 +13,53 @@ import (
 //go:embed schema/command-v1.schema.json
 var schemaFS embed.FS
 
-var compiledSchema *jsonschema.Schema
+var (
+	compiledSchema    *jsonschema.Schema
+	compiledSchemaErr error
+	compileSchemaOnce sync.Once
+)
 
-func init() {
-	data, err := schemaFS.ReadFile("schema/command-v1.schema.json")
-	if err != nil {
-		panic(fmt.Sprintf("failed to read embedded schema: %v", err))
-	}
+func getCompiledSchema() (*jsonschema.Schema, error) {
+	compileSchemaOnce.Do(func() {
+		data, err := schemaFS.ReadFile("schema/command-v1.schema.json")
+		if err != nil {
+			compiledSchemaErr = fmt.Errorf("failed to read embedded schema: %w", err)
+			return
+		}
 
-	schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
-	if err != nil {
-		panic(fmt.Sprintf("failed to unmarshal schema JSON: %v", err))
-	}
+		schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+		if err != nil {
+			compiledSchemaErr = fmt.Errorf("failed to unmarshal schema JSON: %w", err)
+			return
+		}
 
-	c := jsonschema.NewCompiler()
-	schemaURL := "command-v1.schema.json"
-	if err := c.AddResource(schemaURL, schemaDoc); err != nil {
-		panic(fmt.Sprintf("failed to add schema resource: %v", err))
-	}
-	compiledSchema, err = c.Compile(schemaURL)
-	if err != nil {
-		panic(fmt.Sprintf("failed to compile schema: %v", err))
-	}
+		c := jsonschema.NewCompiler()
+		schemaURL := "command-v1.schema.json"
+		if err := c.AddResource(schemaURL, schemaDoc); err != nil {
+			compiledSchemaErr = fmt.Errorf("failed to add schema resource: %w", err)
+			return
+		}
+		compiledSchema, err = c.Compile(schemaURL)
+		if err != nil {
+			compiledSchemaErr = fmt.Errorf("failed to compile schema: %w", err)
+		}
+	})
+	return compiledSchema, compiledSchemaErr
 }
 
 func Validate(data []byte) error {
+	schema, err := getCompiledSchema()
+	if err != nil {
+		return fmt.Errorf("schema initialization failed: %w", err)
+	}
+
 	var v any
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	if err := dec.Decode(&v); err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
-	err := compiledSchema.Validate(v)
-	if err != nil {
+	if err := schema.Validate(v); err != nil {
 		return fmt.Errorf("schema validation failed: %w", err)
 	}
 
