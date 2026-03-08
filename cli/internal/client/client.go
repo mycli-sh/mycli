@@ -16,6 +16,10 @@ import (
 // Version is set at build time via -ldflags. Defaults to "dev".
 var Version = "dev"
 
+// InstallMethod is set at build time via -ldflags. Tracks how the CLI was installed.
+// Possible values: "source" (default), "github" (goreleaser/install script), "brew" (Homebrew).
+var InstallMethod = "source"
+
 type Client struct {
 	rc         *resty.Client
 	refreshing bool // guards against recursive refresh

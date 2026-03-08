@@ -14,6 +14,8 @@ import (
 	"mycli.sh/cli/internal/engine"
 	"mycli.sh/cli/internal/history"
 	"mycli.sh/cli/internal/library"
+	"mycli.sh/cli/internal/termui"
+	"mycli.sh/cli/internal/update"
 )
 
 var apiURL string
@@ -25,6 +27,16 @@ func NewRootCmd() *cobra.Command {
 		Long:          "my is a remotely-configurable CLI tool for creating and running personal commands.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if termui.IsTTY() {
+				update.CheckInBackground()
+			}
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			if termui.IsTTY() {
+				update.NotifyIfAvailable()
+			}
+		},
 	}
 
 	cmd.PersistentFlags().StringVar(&apiURL, "api-url", "", "API server URL (overrides config)")

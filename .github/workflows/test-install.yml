@@ -1,0 +1,99 @@
+name: Test Installation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-go-install:
+    name: "go install (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.1"
+
+      - name: Install via go install
+        run: go install ./cli/cmd/my
+
+      - name: Verify binary exists
+        run: which my
+
+      - name: Verify --version runs
+        run: my --version
+
+      - name: Verify --help runs
+        run: my --help
+
+  test-curl-install:
+    name: "curl install (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.1"
+
+      - name: Build goreleaser snapshot
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          args: release --snapshot --clean
+
+      - name: Set up mock release server
+        run: |
+          # Read snapshot version from goreleaser metadata
+          VERSION=$(jq -r .version dist/metadata.json)
+          TAG="v${VERSION}"
+          echo "SNAPSHOT_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "SNAPSHOT_TAG=${TAG}" >> "$GITHUB_ENV"
+
+          # Create directory structure mimicking GitHub releases
+          SERVE_DIR=$(mktemp -d)
+          echo "SERVE_DIR=${SERVE_DIR}" >> "$GITHUB_ENV"
+          mkdir -p "${SERVE_DIR}/${TAG}"
+
+          # Copy CLI archives (not API ones)
+          cp dist/my_${VERSION}_*.tar.gz "${SERVE_DIR}/${TAG}/"
+
+          # Create mock latest-release API response
+          echo "{\"tag_name\": \"${TAG}\"}" > "${SERVE_DIR}/latest.json"
+
+          echo "Serving from ${SERVE_DIR}:"
+          find "${SERVE_DIR}" -type f
+
+      - name: Start HTTP server
+        run: |
+          cd "$SERVE_DIR" && python3 -m http.server 9876 &
+          # Wait for server to be ready
+          for i in 1 2 3 4 5; do
+            curl -sf http://localhost:9876/latest.json && break
+            sleep 1
+          done
+
+      - name: Run install script
+        run: |
+          MYCLI_RELEASE_URL=http://localhost:9876/latest.json \
+          MYCLI_DOWNLOAD_BASE=http://localhost:9876 \
+            sh scripts/install.sh
+
+      - name: Verify installed binary
+        run: |
+          which my
+          my --version
+          my --help
