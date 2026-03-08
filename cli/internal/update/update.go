@@ -32,7 +32,7 @@ var (
 )
 
 // CheckInBackground spawns a goroutine that checks for a new release if the
-// cached result is older than 24 hours.
+// cached result is older than the check interval.
 func CheckInBackground() {
 	backgroundDone.Add(1)
 	go func() {
