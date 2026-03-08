@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26.0"
+          go-version: "1.26.1"
 
       - run: go test ./...
 
@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26.0"
+          go-version: "1.26.1"
 
       - uses: golangci/golangci-lint-action@v9
 
@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26.0"
+          go-version: "1.26.1"
 
       - uses: docker/setup-qemu-action@v4
 
