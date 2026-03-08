@@ -147,10 +147,29 @@ libraries:
 
 ### Release a version
 
-Create a versioned release from a git tag:
+Run `my library release` to create a versioned release. Without arguments it prompts you to pick a version bump:
 
 ```bash
-my library release v1.0.0
+my library release
+# Latest release: v1.0.0
+# Bump to:
+#   1) v1.0.1 (patch)
+#   2) v1.1.0 (minor)
+#   3) v2.0.0 (major)
+#   4) Custom
+```
+
+You can also pass a tag directly:
+
+```bash
+my library release v1.1.0
+```
+
+Use `--push` to push the new tag to origin in one step, or `--dry-run` to preview without making changes:
+
+```bash
+my library release v1.1.0 --push
+my library release --dry-run
 ```
 
 ### Storage

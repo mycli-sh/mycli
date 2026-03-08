@@ -78,7 +78,7 @@ All management subcommands live under `cli`:
 | `library search <query>` | Search public libraries |
 | `library explore` | Interactive TUI for browsing libraries |
 | `library info <identifier>` | Show library details |
-| `library release <tag>` | Create a versioned release from a git tag |
+| `library release [tag]` | Create a versioned release from a git tag (interactive if omitted) |
 | `library sync` | Sync registry libraries with server |
 
 Installed library commands are available as top-level subcommands: `my <library> <command>`.
@@ -103,6 +103,8 @@ Installed library commands are available as top-level subcommands: `my <library>
 | `source add` | `--ref` | Git branch or tag to checkout |
 | `source add` | `--name` | Alias for the source (defaults to repo name) |
 | `library list` | `--json` | Output as JSON |
+| `library release` | `--push` | Push the created tag to origin after releasing |
+| `library release` | `--dry-run` | Preview what would happen without making changes |
 
 ## Command Spec Format
 

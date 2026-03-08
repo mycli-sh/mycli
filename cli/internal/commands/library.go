@@ -316,23 +316,26 @@ func newLibraryListCmd() *cobra.Command {
 }
 
 func newLibraryReleaseCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "release <tag>",
+	var pushFlag bool
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "release [tag]",
 		Short: "Create a versioned release of all libraries in the manifest",
 		Long: `Create a release from a git tag (e.g., v1.0.0). Reads the manifest and specs
 at the tagged commit and publishes them to the registry. All libraries in the
-manifest are released under the same tag. Requires login.`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			tag := args[0]
+manifest are released under the same tag. Requires login.
 
+When called without a tag, interactively prompts for a version bump.
+When a tag is given that doesn't exist yet, creates it at HEAD before releasing.
+When a tag already exists, publishes from that tag (backward compatible).
+
+Use --push to push the tag to origin after releasing.
+Use --dry-run to preview without making changes.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if !auth.IsLoggedIn() {
 				return fmt.Errorf("not logged in (run 'my cli login' first)")
-			}
-
-			// Validate tag format
-			if !tagPattern.MatchString(tag) {
-				return fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
 			}
 
 			cwd, err := os.Getwd()
@@ -340,9 +343,118 @@ manifest are released under the same tag. Requires login.`,
 				return fmt.Errorf("get working directory: %w", err)
 			}
 
-			// Verify tag exists
-			if !library.TagExists(cwd, tag) {
-				return fmt.Errorf("tag %q not found (run 'git tag %s' first)", tag, tag)
+			var tag string
+			tagCreated := false
+
+			if len(args) == 1 {
+				// Tag provided as argument
+				tag = args[0]
+				if !tagPattern.MatchString(tag) {
+					return fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
+				}
+
+				if library.TagExists(cwd, tag) {
+					// Mode C: existing tag — publish only, skip working tree check
+				} else {
+					// Mode B: tag doesn't exist — create it at HEAD
+					clean, err := library.IsWorkingTreeClean(cwd)
+					if err != nil {
+						return fmt.Errorf("check working tree: %w", err)
+					}
+					if !clean {
+						return fmt.Errorf("working tree has uncommitted changes; commit or stash them first")
+					}
+					if dryRun {
+						fmt.Printf("[dry-run] Would create tag %s at HEAD\n", tag)
+					} else {
+						if err := library.CreateTag(cwd, tag); err != nil {
+							return fmt.Errorf("create tag: %w", err)
+						}
+						fmt.Printf("Created tag %s\n", tag)
+					}
+					tagCreated = true
+				}
+			} else {
+				// Mode A: no argument — interactive prompt
+				clean, err := library.IsWorkingTreeClean(cwd)
+				if err != nil {
+					return fmt.Errorf("check working tree: %w", err)
+				}
+				if !clean {
+					return fmt.Errorf("working tree has uncommitted changes; commit or stash them first")
+				}
+
+				latest, err := library.LatestSemverTag(cwd)
+				if err != nil {
+					return fmt.Errorf("find latest tag: %w", err)
+				}
+
+				if latest == "" {
+					latest = "v0.0.0"
+					fmt.Println("No existing tags found. Starting from v0.0.0.")
+				} else {
+					fmt.Printf("Latest release: %s\n", latest)
+				}
+
+				patchBump, _ := library.BumpSemver(latest, "patch")
+				minorBump, _ := library.BumpSemver(latest, "minor")
+				majorBump, _ := library.BumpSemver(latest, "major")
+
+				fmt.Println()
+				fmt.Println("Bump to:")
+				fmt.Printf("  1) %s (patch)\n", patchBump)
+				fmt.Printf("  2) %s (minor)\n", minorBump)
+				fmt.Printf("  3) %s (major)\n", majorBump)
+				fmt.Println("  4) Custom")
+				fmt.Println()
+
+				var choice string
+				fmt.Print("Choose [1-4]: ")
+				if _, err := fmt.Scanln(&choice); err != nil {
+					return fmt.Errorf("read input: %w", err)
+				}
+
+				switch strings.TrimSpace(choice) {
+				case "1":
+					tag = patchBump
+				case "2":
+					tag = minorBump
+				case "3":
+					tag = majorBump
+				case "4":
+					fmt.Print("Enter tag (vX.Y.Z): ")
+					if _, err := fmt.Scanln(&tag); err != nil {
+						return fmt.Errorf("read input: %w", err)
+					}
+					tag = strings.TrimSpace(tag)
+					if !tagPattern.MatchString(tag) {
+						return fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
+					}
+				default:
+					return fmt.Errorf("invalid choice %q", choice)
+				}
+
+				if library.TagExists(cwd, tag) {
+					return fmt.Errorf("tag %s already exists; use 'my library release %s' to publish the existing tag", tag, tag)
+				}
+
+				if dryRun {
+					fmt.Printf("[dry-run] Would create tag %s at HEAD\n", tag)
+				} else {
+					if err := library.CreateTag(cwd, tag); err != nil {
+						return fmt.Errorf("create tag: %w", err)
+					}
+					fmt.Printf("Created tag %s\n", tag)
+				}
+				tagCreated = true
+			}
+
+			if dryRun {
+				fmt.Printf("[dry-run] Would publish release %s\n", tag)
+				if pushFlag {
+					fmt.Printf("[dry-run] Would push tag %s to origin\n", tag)
+				}
+				return nil
 			}
 
 			// Get commit hash for the tag
@@ -429,9 +541,25 @@ manifest are released under the same tag. Requires login.`,
 				fmt.Printf("Released %s %s (%d commands)\n", libKey, tag, resp.Published)
 			}
 
+			// Push tag if requested
+			if pushFlag && tagCreated {
+				fmt.Printf("Pushing tag %s to origin...\n", tag)
+				if err := library.PushTag(cwd, tag); err != nil {
+					return fmt.Errorf("push tag: %w", err)
+				}
+				fmt.Println("Done.")
+			} else if pushFlag && !tagCreated {
+				fmt.Println("Tag already existed; skipping push (push it manually if needed).")
+			}
+
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&pushFlag, "push", false, "push the created tag to origin after releasing")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what would happen without making changes")
+
+	return cmd
 }
 
 func getGitRemoteURL(dir string) (string, error) {

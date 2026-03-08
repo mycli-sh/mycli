@@ -4,22 +4,47 @@ description: Create a versioned release from a git tag.
 ---
 
 ```bash
-my library release <tag>
+my library release [tag]
 ```
 
-Publishes a versioned release of a library from a git tag. This makes the release available for others to install from the registry.
+Publishes a versioned release of a library from a git tag. This makes the release available for others to install from the registry. All libraries in the manifest are released under the same tag.
+
+**Three usage modes:**
+
+1. **Interactive (no argument)** — detects the latest semver tag and prompts you to pick a patch, minor, or major bump. Creates the tag at HEAD.
+2. **New tag (tag doesn't exist)** — creates the tag at HEAD and publishes.
+3. **Existing tag** — publishes from the existing tag.
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `tag` | Git tag to release (required) |
+| `tag` | Git tag to release (optional — omit for interactive prompt) |
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--push` | Push the created tag to origin after releasing |
+| `--dry-run` | Preview what would happen without making changes |
 
 ## Examples
 
 ```bash
-# Create a release from a tag
+# Interactive — prompts for version bump
+my library release
+
+# Create a new tag and release
+my library release v1.2.0
+
+# Release from an existing tag
 my library release v1.0.0
+
+# Release and push the tag to origin
+my library release v1.2.0 --push
+
+# Preview without making changes
+my library release --dry-run
 ```
 
 ## Requires

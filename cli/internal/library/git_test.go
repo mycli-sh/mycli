@@ -182,6 +182,109 @@ func TestTagCommitHash(t *testing.T) {
 	}
 }
 
+func TestLatestSemverTag(t *testing.T) {
+	tmp := t.TempDir()
+	workDir := filepath.Join(tmp, "repo")
+
+	gitRun(t, tmp, "git", "init", workDir)
+	gitRun(t, workDir, "git", "config", "user.email", "test@test.com")
+	gitRun(t, workDir, "git", "config", "user.name", "Test")
+
+	if err := os.WriteFile(filepath.Join(workDir, "f.txt"), []byte("a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, workDir, "git", "add", ".")
+	gitRun(t, workDir, "git", "commit", "-m", "c1")
+
+	// No tags yet
+	tag, err := LatestSemverTag(workDir)
+	if err != nil {
+		t.Fatalf("LatestSemverTag (no tags): %v", err)
+	}
+	if tag != "" {
+		t.Errorf("expected empty tag, got %q", tag)
+	}
+
+	// Add tags in non-sorted order
+	gitRun(t, workDir, "git", "tag", "v0.0.1")
+	gitRun(t, workDir, "git", "tag", "v0.0.10")
+	gitRun(t, workDir, "git", "tag", "v0.1.0")
+	gitRun(t, workDir, "git", "tag", "v0.0.2")
+	gitRun(t, workDir, "git", "tag", "not-semver")
+
+	tag, err = LatestSemverTag(workDir)
+	if err != nil {
+		t.Fatalf("LatestSemverTag: %v", err)
+	}
+	if tag != "v0.1.0" {
+		t.Errorf("expected v0.1.0, got %q", tag)
+	}
+}
+
+func TestCreateTag(t *testing.T) {
+	tmp := t.TempDir()
+	workDir := filepath.Join(tmp, "repo")
+
+	gitRun(t, tmp, "git", "init", workDir)
+	gitRun(t, workDir, "git", "config", "user.email", "test@test.com")
+	gitRun(t, workDir, "git", "config", "user.name", "Test")
+
+	if err := os.WriteFile(filepath.Join(workDir, "f.txt"), []byte("a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, workDir, "git", "add", ".")
+	gitRun(t, workDir, "git", "commit", "-m", "c1")
+
+	if err := CreateTag(workDir, "v1.0.0"); err != nil {
+		t.Fatalf("CreateTag: %v", err)
+	}
+
+	if !TagExists(workDir, "v1.0.0") {
+		t.Error("expected tag v1.0.0 to exist after CreateTag")
+	}
+
+	// Creating duplicate tag should fail
+	if err := CreateTag(workDir, "v1.0.0"); err == nil {
+		t.Error("expected error when creating duplicate tag")
+	}
+}
+
+func TestIsWorkingTreeClean(t *testing.T) {
+	tmp := t.TempDir()
+	workDir := filepath.Join(tmp, "repo")
+
+	gitRun(t, tmp, "git", "init", workDir)
+	gitRun(t, workDir, "git", "config", "user.email", "test@test.com")
+	gitRun(t, workDir, "git", "config", "user.name", "Test")
+
+	if err := os.WriteFile(filepath.Join(workDir, "f.txt"), []byte("a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, workDir, "git", "add", ".")
+	gitRun(t, workDir, "git", "commit", "-m", "c1")
+
+	// Clean tree
+	clean, err := IsWorkingTreeClean(workDir)
+	if err != nil {
+		t.Fatalf("IsWorkingTreeClean: %v", err)
+	}
+	if !clean {
+		t.Error("expected clean working tree")
+	}
+
+	// Dirty tree
+	if err := os.WriteFile(filepath.Join(workDir, "f.txt"), []byte("modified\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	clean, err = IsWorkingTreeClean(workDir)
+	if err != nil {
+		t.Fatalf("IsWorkingTreeClean: %v", err)
+	}
+	if clean {
+		t.Error("expected dirty working tree")
+	}
+}
+
 func TestArchiveTag(t *testing.T) {
 	tag := "v1.0.0"
 	repoURL := initTestRepoWithTag(t, tag)
