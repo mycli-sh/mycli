@@ -306,11 +306,7 @@ func TestHandleKeyTextInput(t *testing.T) {
 	if model.query != "d" {
 		t.Errorf("expected query 'd', got %q", model.query)
 	}
-	// Should have refiltered
-	if len(model.filtered) >= len(items) {
-		// "d" matches deploy and build(description has no d... actually "deploy" and "cleanup" via description)
-		// This is fine as long as refiltering happened (cursor reset to 0)
-	}
+	// Refiltering should have happened (verified by cursor reset below)
 	if model.cursor != 0 {
 		t.Errorf("expected cursor reset to 0 after refilter, got %d", model.cursor)
 	}
