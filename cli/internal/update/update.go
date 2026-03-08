@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	checkInterval = 24 * time.Hour
+	checkInterval = 1 * time.Hour
 	checkTimeout  = 5 * time.Second
 	cacheFile     = "update_check.json"
 	releaseURL    = "https://api.github.com/repos/mycli-sh/mycli/releases/latest"
