@@ -51,13 +51,13 @@ func NotifyIfAvailable() {
 		return
 	}
 
-	current := normalizeVersion(client.Version)
-	latest := normalizeVersion(cached.LatestVersion)
+	current := NormalizeVersion(client.Version)
+	latest := NormalizeVersion(cached.LatestVersion)
 	if current == "" || latest == "" || current == "dev" {
 		return
 	}
 
-	if compareVersions(latest, current) > 0 {
+	if CompareVersions(latest, current) > 0 {
 		fmt.Fprintf(os.Stderr, "\nA new version of mycli is available: v%s → v%s\n", current, latest)
 		switch client.InstallMethod {
 		case "brew":
@@ -127,14 +127,46 @@ func writeCache(r checkResult) {
 	_ = os.WriteFile(cachePath(), data, 0600)
 }
 
-// normalizeVersion strips a leading "v" from a version string.
-func normalizeVersion(v string) string {
+// FetchLatestVersion fetches the latest release tag from the GitHub API and
+// returns the normalized version string (without leading "v").
+func FetchLatestVersion() (string, error) {
+	httpClient := &http.Client{Timeout: checkTimeout}
+	resp, err := httpClient.Get(releaseURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to check latest version: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to check latest version: HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &release); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+	if release.TagName == "" {
+		return "", fmt.Errorf("no version found in response")
+	}
+
+	return NormalizeVersion(release.TagName), nil
+}
+
+// NormalizeVersion strips a leading "v" from a version string.
+func NormalizeVersion(v string) string {
 	return strings.TrimPrefix(v, "v")
 }
 
-// compareVersions compares two dotted version strings (e.g. "0.5.0" vs "0.6.0").
+// CompareVersions compares two dotted version strings (e.g. "0.5.0" vs "0.6.0").
 // Returns >0 if a > b, <0 if a < b, 0 if equal.
-func compareVersions(a, b string) int {
+func CompareVersions(a, b string) int {
 	pa := strings.Split(a, ".")
 	pb := strings.Split(b, ".")
 

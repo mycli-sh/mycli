@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"mycli.sh/cli/internal/client"
+	"mycli.sh/cli/internal/update"
 )
 
 const installScriptURL = "https://raw.githubusercontent.com/mycli-sh/mycli/main/scripts/install.sh"
@@ -21,13 +22,21 @@ func newUpdateCmd() *cobra.Command {
 		Use:   "update",
 		Short: "Update mycli to the latest version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			switch client.InstallMethod {
-			case "brew":
+			if client.InstallMethod == "brew" {
 				fmt.Println("Run 'brew upgrade mycli' to upgrade.")
 				return nil
-			default:
-				return runInstallScript()
 			}
+			if client.Version != "dev" {
+				latest, err := update.FetchLatestVersion()
+				if err == nil {
+					current := update.NormalizeVersion(client.Version)
+					if current != "" && update.CompareVersions(current, latest) >= 0 {
+						fmt.Printf("Already up to date (v%s)\n", current)
+						return nil
+					}
+				}
+			}
+			return runInstallScript()
 		},
 	}
 }

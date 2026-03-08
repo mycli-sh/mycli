@@ -1,0 +1,26 @@
+---
+title: my cli set-api-url
+description: Persist a custom API URL in config.
+---
+
+```bash
+my cli set-api-url [url]
+```
+
+Sets the API URL in `~/.my/config.json`. This is useful for pointing the CLI at a self-hosted API server.
+
+## Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--reset` | `false` | Reset to the build default URL |
+
+## Examples
+
+```bash
+# Set a custom API URL
+my cli set-api-url https://api.example.com
+
+# Reset to the default
+my cli set-api-url --reset
+```

@@ -13,8 +13,8 @@ func TestNormalizeVersion(t *testing.T) {
 		{"", ""},
 	}
 	for _, tt := range tests {
-		if got := normalizeVersion(tt.input); got != tt.want {
-			t.Errorf("normalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
+		if got := NormalizeVersion(tt.input); got != tt.want {
+			t.Errorf("NormalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
@@ -34,14 +34,14 @@ func TestCompareVersions(t *testing.T) {
 		{"1.0.1", "1.0", 1},
 	}
 	for _, tt := range tests {
-		got := compareVersions(tt.a, tt.b)
+		got := CompareVersions(tt.a, tt.b)
 		switch {
 		case tt.want > 0 && got <= 0:
-			t.Errorf("compareVersions(%q, %q) = %d, want >0", tt.a, tt.b, got)
+			t.Errorf("CompareVersions(%q, %q) = %d, want >0", tt.a, tt.b, got)
 		case tt.want < 0 && got >= 0:
-			t.Errorf("compareVersions(%q, %q) = %d, want <0", tt.a, tt.b, got)
+			t.Errorf("CompareVersions(%q, %q) = %d, want <0", tt.a, tt.b, got)
 		case tt.want == 0 && got != 0:
-			t.Errorf("compareVersions(%q, %q) = %d, want 0", tt.a, tt.b, got)
+			t.Errorf("CompareVersions(%q, %q) = %d, want 0", tt.a, tt.b, got)
 		}
 	}
 }

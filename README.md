@@ -57,6 +57,7 @@ All management subcommands live under `cli`:
 | `cli run [-f file \| slug] [args...]` | Run a cached command (or directly from a spec file with `-f`). With no args, opens an interactive picker |
 | `cli status` | Show API URL, login state, last sync time, cached command count |
 | `cli history` | Show run history |
+| `cli update` | Update mycli to the latest version |
 | `cli set-api-url [url]` | Set custom API URL (`--reset` to revert to default) |
 
 ### Sources (git-backed)
