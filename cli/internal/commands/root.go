@@ -23,6 +23,7 @@ var apiURL string
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "my",
+		Version:       client.Version,
 		Short:         "CLI of CLIs — your personal command runner",
 		Long:          "my is a remotely-configurable CLI tool for creating and running personal commands.",
 		SilenceUsage:  true,

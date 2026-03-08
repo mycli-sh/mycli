@@ -53,7 +53,7 @@ jobs:
       - name: Build goreleaser snapshot
         uses: goreleaser/goreleaser-action@v7
         with:
-          args: release --snapshot --clean
+          args: release --snapshot --clean --skip=docker
 
       - name: Set up mock release server
         run: |
