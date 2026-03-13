@@ -10,8 +10,37 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      web: ${{ steps.filter.outputs.web }}
+      site: ${{ steps.filter.outputs.site }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**.go'
+              - 'go.mod'
+              - 'go.sum'
+            web:
+              - 'web/**'
+            site:
+              - 'site/**'
+            docs:
+              - 'docs/**'
+
   test:
     name: Test
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -24,6 +53,8 @@ jobs:
 
   lint:
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -36,6 +67,8 @@ jobs:
 
   build:
     name: Build (GoReleaser Snapshot)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -56,6 +89,8 @@ jobs:
 
   web-lint:
     name: Web Lint
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -70,6 +105,8 @@ jobs:
 
   web-build:
     name: Web Build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -81,3 +118,59 @@ jobs:
 
       - run: bun run build
         working-directory: web
+
+  site-build:
+    name: Site Build
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+        working-directory: site
+
+      - run: bun run build
+        working-directory: site
+
+  docs-build:
+    name: Docs Build
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+        working-directory: docs
+
+      - run: bun run build
+        working-directory: docs
+
+  ci-ok:
+    name: CI
+    if: always()
+    needs: [test, lint, build, web-lint, web-build, site-build, docs-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required jobs
+        run: |-
+          results=(
+            "${{ needs.test.result }}"
+            "${{ needs.lint.result }}"
+            "${{ needs.build.result }}"
+            "${{ needs.web-lint.result }}"
+            "${{ needs.web-build.result }}"
+            "${{ needs.site-build.result }}"
+            "${{ needs.docs-build.result }}"
+          )
+          for r in "${results[@]}"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "One or more jobs failed or were cancelled"
+              exit 1
+            fi
+          done
