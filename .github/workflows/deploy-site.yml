@@ -22,7 +22,7 @@ jobs:
         working-directory: site
 
       - name: Build
-        run: bun run build
+        run: bun --bun run build
         working-directory: site
 
       - name: Create Pages project (if needed)

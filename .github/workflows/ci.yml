@@ -132,7 +132,7 @@ jobs:
       - run: bun install
         working-directory: site
 
-      - run: bun run build
+      - run: bun --bun run build
         working-directory: site
 
   docs-build:
@@ -148,7 +148,7 @@ jobs:
       - run: bun install
         working-directory: docs
 
-      - run: bun run build
+      - run: bun --bun run build
         working-directory: docs
 
   ci-ok:
