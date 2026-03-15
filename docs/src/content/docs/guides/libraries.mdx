@@ -12,6 +12,19 @@ A **library** is a collection of commands that you can install and use. Librarie
 
 Both types make commands available as `my <library> <slug>` (e.g., `my ops deploy`).
 
+## Run library commands
+
+After installing a library (from either a source or the registry), its commands are available as top-level subcommands:
+
+```bash
+my ops deploy api -e production
+my kubernetes logs my-pod -f
+```
+
+Libraries can have aliases, so you can use a shorter name. For example, `my k` as an alias for `my kubernetes`.
+
+Use `my <library> --help` to see all commands available in a library.
+
 ## Git-backed sources
 
 A **source** is a git repository that contains one or more libraries of commands. No account is needed.
@@ -62,17 +75,6 @@ Sync registry libraries manually to fetch the latest commands:
 ```bash
 my library sync
 ```
-
-## Run library commands
-
-After installing a library (from either a source or the registry), its commands are available as top-level subcommands:
-
-```bash
-my ops deploy -- production
-my k8s logs -- my-pod
-```
-
-Libraries can have aliases, so you can use a shorter name. For example, `my k` as an alias for `my kubernetes`.
 
 ## Discover libraries
 

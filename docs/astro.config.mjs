@@ -66,11 +66,11 @@ export default defineConfig({
         {
           label: "Guides",
           items: [
+            { label: "Libraries", slug: "guides/libraries" },
+            { label: "Running Commands", slug: "guides/running-commands" },
             { label: "Creating Commands", slug: "guides/creating-commands" },
             { label: "Publishing Commands", slug: "guides/publishing-commands" },
-            { label: "Running Commands", slug: "guides/running-commands" },
             { label: "Template Variables", slug: "guides/template-variables" },
-            { label: "Libraries", slug: "guides/libraries" },
             { label: "Authentication", slug: "guides/authentication" },
           ],
         },

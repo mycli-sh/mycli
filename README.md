@@ -1,8 +1,28 @@
 # mycli
 
-A CLI tool and API server for defining, publishing, and running shell-based command specs. Author commands as YAML or JSON specs, push them to a server, sync them locally, and run them from anywhere.
+A CLI tool for running shared command libraries and authoring your own as YAML specs. Install curated libraries and run commands directly, or define your own with args, flags, and multi-step workflows.
 
 ## Quick Start
+
+### Use a library
+
+No account needed — install a library and run commands immediately:
+
+```bash
+make build-cli
+
+# Install a library
+./bin/my library install kubernetes
+
+# Run commands directly
+./bin/my kubernetes port-forward svc/my-service -p 8080
+
+# Or add a git-backed source
+./bin/my source add https://github.com/user/example-library.git
+./bin/my ops deploy api -e production
+```
+
+### Create your own commands
 
 **Prerequisites:** Go 1.25+, Docker (for PostgreSQL)
 
@@ -27,17 +47,32 @@ make dev
 ./bin/my cli run -f command.yaml
 ```
 
-**Or use git-backed sources without an account:**
-
-```bash
-make build-cli
-./bin/my source add https://github.com/user/example-library.git
-./bin/my <library> <command>
-```
-
 ## CLI Reference
 
-All management subcommands live under `cli`:
+> **Installed library commands are available as top-level subcommands: `my <library> <command>`.**
+> For example: `my kubernetes port-forward svc/my-service -p 8080`, `my ops deploy api -e production`.
+
+### Libraries
+
+| Command | Description |
+|---------|-------------|
+| `library install <name>` | Install a library from the registry |
+| `library uninstall <name>` | Remove a registry-installed library |
+| `library list` | List all libraries (from any source) |
+| `library search <query>` | Search public libraries |
+| `library explore` | Interactive TUI for browsing libraries |
+| `library info <identifier>` | Show library details |
+| `library release [tag]` | Create a versioned release from a git tag (interactive if omitted) |
+| `library sync` | Sync registry libraries with server |
+
+### Sources (git-backed)
+
+| Command | Description |
+|---------|-------------|
+| `source add <git-url>` | Clone a git source repository |
+| `source remove <name>` | Remove a git source |
+| `source list` | List installed git sources |
+| `source update [name]` | Update all or a specific git source (git pull) |
 
 ### Authentication
 
@@ -59,30 +94,6 @@ All management subcommands live under `cli`:
 | `cli history` | Show run history |
 | `cli update` | Update mycli to the latest version |
 | `cli set-api-url [url]` | Set custom API URL (`--reset` to revert to default) |
-
-### Sources (git-backed)
-
-| Command | Description |
-|---------|-------------|
-| `source add <git-url>` | Clone a git source repository |
-| `source remove <name>` | Remove a git source |
-| `source list` | List installed git sources |
-| `source update [name]` | Update all or a specific git source (git pull) |
-
-### Libraries
-
-| Command | Description |
-|---------|-------------|
-| `library install <name>` | Install a library from the registry |
-| `library uninstall <name>` | Remove a registry-installed library |
-| `library list` | List all libraries (from any source) |
-| `library search <query>` | Search public libraries |
-| `library explore` | Interactive TUI for browsing libraries |
-| `library info <identifier>` | Show library details |
-| `library release [tag]` | Create a versioned release from a git tag (interactive if omitted) |
-| `library sync` | Sync registry libraries with server |
-
-Installed library commands are available as top-level subcommands: `my <library> <command>`.
 
 ### Flags
 

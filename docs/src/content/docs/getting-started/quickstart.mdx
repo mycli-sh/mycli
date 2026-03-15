@@ -1,11 +1,43 @@
 ---
 title: Quickstart
-description: Create, publish, and run your first command in under a minute.
+description: Install a library and run your first command — or create your own.
 ---
 
 import { LinkCard, Steps } from '@astrojs/starlight/components';
 
-This guide walks you through creating a simple command, pushing it to the registry, and running it.
+## Run commands from a library
+
+No account needed — install a library and start running commands immediately.
+
+<Steps>
+
+1. **Install a library**
+
+   ```bash
+   my library install kubernetes
+   ```
+
+2. **Run a command**
+
+   Library commands are available as top-level subcommands:
+
+   ```bash
+   my kubernetes port-forward svc/my-service -p 8080
+   ```
+
+3. **Discover commands**
+
+   ```bash
+   my library list              # List installed libraries
+   my library explore           # Browse libraries interactively
+   my kubernetes --help         # See commands in a library
+   ```
+
+</Steps>
+
+## Create your own commands
+
+Log in to author, publish, and sync your own commands.
 
 <Steps>
 
@@ -71,24 +103,8 @@ This guide walks you through creating a simple command, pushing it to the regist
 
 </Steps>
 
-## Using libraries (no account needed)
-
-You can also use commands from git-backed sources without an account:
-
-```bash
-my source add https://github.com/user/example-library.git
-my <library> <command>
-```
-
-Or install from the registry:
-
-```bash
-my library install kubernetes
-my k8s <command>
-```
-
 ## Next steps
 
+<LinkCard title="Libraries" description="Install, discover, and manage command libraries." href="/guides/libraries/" />
 <LinkCard title="Creating Commands" description="Learn the full spec format for authoring commands." href="/guides/creating-commands/" />
 <LinkCard title="Template Variables" description="Use dynamic values in your commands." href="/guides/template-variables/" />
-<LinkCard title="Libraries" description="Share commands via git repos and the registry." href="/guides/libraries/" />

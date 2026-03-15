@@ -2,8 +2,29 @@
 const steps = [
   {
     number: "1",
-    title: "Define",
-    description: "Write a command spec in YAML with arguments, flags, and templated steps.",
+    title: "Install",
+    description: "Install a library from the registry or add a git-backed source.",
+    code: `$ my library install kubernetes
+Installed kubernetes (12 commands)
+
+$ my source add https://github.com/user/ops-tools.git
+Added source "ops-tools" (2 libraries)`,
+  },
+  {
+    number: "2",
+    title: "Run",
+    description: "Run commands directly as top-level subcommands with full arg parsing.",
+    code: `$ my kubernetes port-forward svc/my-service -p 8080
+Forwarding svc/my-service:8080 → localhost:8080
+
+$ my ops deploy api -e production
+Deploying api to production...
+Deploy complete.`,
+  },
+  {
+    number: "3",
+    title: "Create your own",
+    description: "Author commands as YAML specs, push to the registry, and share them.",
     code: `schemaVersion: 1
 kind: command
 
@@ -12,42 +33,12 @@ metadata:
   slug: greet
   description: Greet someone
 
-args:
-  positional:
-    - name: name
-      required: true
-
 steps:
   - name: greet
-    run: echo 'Hello, {{.args.name}}!'`,
-  },
-  {
-    number: "2",
-    title: "Publish",
-    description: "Push your command to the registry to share it across machines.",
-    code: `$ my cli push -f command.yaml
-Created command "greet" (a1b2c3d4-...)
-Published version 1 (hash: e5f6a7b8)
+    run: echo 'Hello, {{.args.name}}!'
 
-$ my cli push --dir ./commands/
-Pushing commands/deploy/command.yaml ...
-Published version 3 (hash: c4d5e6f7)
-Pushing commands/backup/command.yaml ...
-Created command "backup" (f8a9b0c1-...)
-Published version 1 (hash: d2e3f4a5)
-
-2 succeeded, 0 failed`,
-  },
-  {
-    number: "3",
-    title: "Run",
-    description: "Run commands from anywhere with full arg parsing.",
-    code: `$ my cli run greet -- World
-Hello, World!
-
-$ my cli run deploy -- production
-Deploying to production...
-Deploy complete.`,
+$ my cli push -f command.yaml
+Published version 1 (hash: e5f6a7b8)`,
   },
 ];
 ---
@@ -57,7 +48,7 @@ Deploy complete.`,
     <div class="text-center">
       <h2 class="text-3xl font-bold text-white sm:text-4xl">How it works</h2>
       <p class="mt-4 text-lg text-zinc-400">
-        Three steps from definition to execution.
+        From installation to creating your own.
       </p>
     </div>
 

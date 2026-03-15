@@ -1,9 +1,26 @@
 ---
 title: Running Commands
-description: Sync, discover, and execute commands from the registry or local files.
+description: Run commands from installed libraries or your personal catalog.
 ---
 
-import { LinkCard } from '@astrojs/starlight/components';
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+## Run library commands
+
+After installing a library, its commands are available as top-level subcommands:
+
+```bash
+my <library> <command> [args] [--flags]
+```
+
+For example:
+
+```bash
+my kubernetes port-forward svc/my-service -p 8080
+my ops deploy api -e production
+```
+
+Libraries can have aliases, so `my k8s logs` may work as a shorthand for `my kubernetes logs`. Use `my <library> --help` to see available commands in a library.
 
 ## Sync your catalog
 
@@ -15,7 +32,9 @@ my source update
 
 This pulls the latest changes from all installed source repos. The API catalog is synced with ETag support for efficient caching and stored locally at `~/.my/cache/`.
 
-## Run a synced command
+## Run personal commands
+
+Run your own published commands by slug:
 
 ```bash
 my cli run <slug> [-- args...]
@@ -96,5 +115,6 @@ When you run a command, mycli:
 
 ## Next steps
 
+<LinkCard title="Libraries" description="Install, discover, and manage command libraries." href="/guides/libraries/" />
 <LinkCard title="Template Variables" description="Use dynamic values in commands." href="/guides/template-variables/" />
 <LinkCard title="CLI Reference: run" description="Full flag and option reference." href="/reference/cli/run/" />

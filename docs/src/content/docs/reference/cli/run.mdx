@@ -8,6 +8,10 @@ my cli run [-f file | slug] [flags] [-- args...]
 my cli run
 ```
 
+:::tip
+Library commands can be run directly as `my <library> <command>` without `cli run`. See the [Libraries guide](/guides/libraries/).
+:::
+
 Loads a cached spec (or reads a file with `-f`), parses arguments, renders templates, and executes steps.
 
 When run with no arguments, opens an interactive picker to select from all available commands (local files, synced commands, libraries, and git sources). In non-TTY environments, prints a table of available commands instead.
