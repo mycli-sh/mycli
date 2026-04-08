@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26.1"
+          go-version: "1.26.2"
 
       - name: Install via go install
         run: go install ./cli/cmd/my
@@ -48,7 +48,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26.1"
+          go-version: "1.26.2"
 
       - name: Build goreleaser snapshot
         uses: goreleaser/goreleaser-action@v7
