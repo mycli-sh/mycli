@@ -66,7 +66,7 @@ func EchoSpec(slug, marker string) json.RawMessage {
     "description": "Integration test echo"
   },
   "steps": [
-    {"name": "emit", "run": [%q]}
+    {"name": "emit", "run": %q}
   ]
 }`, slug, slug, "echo "+marker))
 }
