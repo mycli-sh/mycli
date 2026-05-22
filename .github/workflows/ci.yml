@@ -30,6 +30,8 @@ jobs:
               - '**.go'
               - 'go.mod'
               - 'go.sum'
+              - 'docker/api.Dockerfile'
+              - 'api/internal/database/migrations/**'
             web:
               - 'web/**'
             site:
@@ -64,6 +66,25 @@ jobs:
           go-version: "1.26.1"
 
       - uses: golangci/golangci-lint-action@v9
+
+  integration:
+    name: Integration
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.1"
+
+      - name: Pre-pull postgres image
+        run: docker pull postgres:18-alpine
+
+      - name: Run integration suite
+        run: make test-integration
 
   build:
     name: Build (GoReleaser Snapshot)
@@ -154,7 +175,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [test, lint, build, web-lint, web-build, site-build, docs-build]
+    needs: [test, lint, integration, build, web-lint, web-build, site-build, docs-build]
     runs-on: ubuntu-latest
     steps:
       - name: Check required jobs
@@ -162,6 +183,7 @@ jobs:
           results=(
             "${{ needs.test.result }}"
             "${{ needs.lint.result }}"
+            "${{ needs.integration.result }}"
             "${{ needs.build.result }}"
             "${{ needs.web-lint.result }}"
             "${{ needs.web-build.result }}"
