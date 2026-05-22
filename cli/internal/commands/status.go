@@ -24,14 +24,17 @@ func newStatusCmd() *cobra.Command {
 			fmt.Printf("API URL:    %s\n", resolveAPIURL(cfg))
 			fmt.Printf("Logged in:  %v\n", auth.IsLoggedIn())
 
-			lastSync := cache.LastSyncTime()
+			profile := cfg.GetActiveProfile()
+			fmt.Printf("Profile:    %s\n", profile)
+
+			lastSync := cache.LastSyncTime(profile)
 			if lastSync.IsZero() {
 				fmt.Println("Last sync:  never")
 			} else {
 				fmt.Printf("Last sync:  %s\n", lastSync.Format("2006-01-02 15:04:05"))
 			}
 
-			catalog, err := cache.GetCatalog()
+			catalog, err := cache.GetCatalog(profile)
 			if err == nil {
 				fmt.Printf("Commands:   %d cached\n", len(catalog.Items))
 			} else {

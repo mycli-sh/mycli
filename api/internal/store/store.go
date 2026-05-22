@@ -79,6 +79,30 @@ func (s *Store) CreateUser(ctx context.Context, email string) (*model.User, erro
 	return &m, nil
 }
 
+// CreateUserWithDefaultProfile inserts a user and their 'default' profile in
+// a single transaction so every user always has at least one profile.
+func (s *Store) CreateUserWithDefaultProfile(ctx context.Context, email string) (*model.User, error) {
+	var user *model.User
+	err := s.withTx(ctx, func(tx *Store) error {
+		u, err := tx.q.CreateUser(ctx, email)
+		if err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		if _, err := tx.db.Exec(ctx, `
+			INSERT INTO profiles (owner_user_id, slug, name, description, is_default)
+			VALUES ($1, 'default', 'Default', 'Default profile', true)`, u.ID); err != nil {
+			return fmt.Errorf("create default profile: %w", err)
+		}
+		m := toModelUser(u)
+		user = &m
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (s *Store) GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
@@ -628,60 +652,16 @@ func (s *Store) CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, sl
 	return &m, nil
 }
 
-// InstallLibrary records that a user has installed a library, atomically
-// incrementing the install count inside a transaction.
-func (s *Store) InstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
-	return s.withTx(ctx, func(tx *Store) error {
-		if err := tx.q.InstallLibrary(ctx, dbgen.InstallLibraryParams{
-			UserID:    userID,
-			LibraryID: libraryID,
-		}); err != nil {
-			return fmt.Errorf("install library: %w", err)
-		}
-		if err := tx.q.IncrementInstallCount(ctx, libraryID); err != nil {
-			return fmt.Errorf("increment install count: %w", err)
-		}
-		return nil
-	})
-}
-
-// UninstallLibrary removes a user's installation and atomically decrements
-// the install count inside a transaction.
-func (s *Store) UninstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
-	return s.withTx(ctx, func(tx *Store) error {
-		rows, err := tx.q.UninstallLibrary(ctx, dbgen.UninstallLibraryParams{
-			UserID:    userID,
-			LibraryID: libraryID,
-		})
-		if err != nil {
-			return fmt.Errorf("uninstall library: %w", err)
-		}
-		if rows > 0 {
-			if err := tx.q.DecrementInstallCount(ctx, libraryID); err != nil {
-				return fmt.Errorf("decrement install count: %w", err)
-			}
-		}
-		return nil
-	})
-}
-
-func (s *Store) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error) {
-	rows, err := s.q.GetInstalledLibraries(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get installed libraries: %w", err)
-	}
-	libs := make([]model.Library, len(rows))
-	for i, r := range rows {
-		libs[i] = toModelLibrary(r)
-	}
-	return libs, nil
-}
-
+// IsLibraryInstalled reports whether the user has the library in any of their
+// profiles. Used for access checks on library-scoped commands.
 func (s *Store) IsLibraryInstalled(ctx context.Context, userID, libraryID uuid.UUID) bool {
-	exists, err := s.q.IsLibraryInstalled(ctx, dbgen.IsLibraryInstalledParams{
-		UserID:    userID,
-		LibraryID: libraryID,
-	})
+	var exists bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM profile_libraries pl
+			JOIN profiles p ON p.id = pl.profile_id
+			WHERE p.owner_user_id = $1 AND pl.library_id = $2
+		)`, userID, libraryID).Scan(&exists)
 	return err == nil && exists
 }
 

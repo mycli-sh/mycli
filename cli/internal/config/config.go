@@ -22,6 +22,23 @@ func DefaultAPI() string {
 type Config struct {
 	APIURL           string `json:"api_url"`
 	TelemetryEnabled bool   `json:"telemetry_enabled"`
+	ActiveProfile    string `json:"active_profile,omitempty"`
+}
+
+// DefaultProfileSlug is the slug of the profile every user always has.
+// Created during signup and during migration backfill.
+const DefaultProfileSlug = "default"
+
+// GetActiveProfile returns the active profile. Resolution order:
+// MY_PROFILE env var > saved config > "default". Always non-empty.
+func (c *Config) GetActiveProfile() string {
+	if p := os.Getenv("MY_PROFILE"); p != "" {
+		return p
+	}
+	if c.ActiveProfile != "" {
+		return c.ActiveProfile
+	}
+	return DefaultProfileSlug
 }
 
 func DefaultDir() string {

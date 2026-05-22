@@ -101,9 +101,9 @@ func handleLoginSuccess(c *client.Client, tokenResp *auth.TokenResponse) error {
 		promptForUsername(c)
 	}
 
-	// Auto-sync commands
+	// Auto-sync commands for the default profile
 	fmt.Println("Syncing commands...")
-	fetched, syncErr := cache.Sync(c, false)
+	fetched, syncErr := cache.SyncProfile(c, config.DefaultProfileSlug, false)
 	if syncErr != nil {
 		fmt.Printf("Warning: sync failed: %v\n", syncErr)
 	} else if fetched == 0 {

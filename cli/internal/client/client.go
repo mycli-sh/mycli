@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -41,10 +42,13 @@ func New(baseURL string) *Client {
 			req.SetHeader("X-Device-Name", hostname)
 		}
 		if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
-			// Proactively refresh if token is expired or near-expiry (30s buffer)
-			if !c.refreshing && !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt.Add(-30*time.Second)) {
-				if c.tryRefresh() {
-					tokens, _ = auth.LoadTokens() // reload after refresh
+			// Skip refresh for API tokens (myc_ prefix) — they don't expire via JWT
+			if !auth.IsAPIToken(tokens.AccessToken) {
+				// Proactively refresh if token is expired or near-expiry (30s buffer)
+				if !c.refreshing && !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt.Add(-30*time.Second)) {
+					if c.tryRefresh() {
+						tokens, _ = auth.LoadTokens() // reload after refresh
+					}
 				}
 			}
 			if tokens.AccessToken != "" {
@@ -54,7 +58,7 @@ func New(baseURL string) *Client {
 		return nil
 	})
 
-	// Retry once on 401 after refreshing the token
+	// Retry once on 401 after refreshing the token (JWT only, not API tokens)
 	rc.SetRetryCount(1).
 		DisableRetryDefaultConditions().
 		AddRetryConditions(resty.RetryConditionFunc(func(resp *resty.Response, err error) bool {
@@ -62,6 +66,10 @@ func New(baseURL string) *Client {
 				return false
 			}
 			if resp.StatusCode() != http.StatusUnauthorized {
+				return false
+			}
+			// Don't retry refresh for API tokens
+			if tokens, loadErr := auth.LoadTokens(); loadErr == nil && auth.IsAPIToken(tokens.AccessToken) {
 				return false
 			}
 			if c.refreshing {
@@ -354,7 +362,7 @@ type CatalogResponse struct {
 	ETag  string        `json:"-"`
 }
 
-func (c *Client) GetCatalog(etag string) (*CatalogResponse, error) {
+func (c *Client) GetCatalog(etag string, profile ...string) (*CatalogResponse, error) {
 	req := c.rc.R()
 	if etag != "" {
 		req.SetHeader("If-None-Match", etag)
@@ -363,7 +371,12 @@ func (c *Client) GetCatalog(etag string) (*CatalogResponse, error) {
 	var errEnv apiErrorEnvelope
 	req.SetResult(&catalog).SetError(&errEnv)
 
-	resp, err := req.Execute("GET", "/v1/catalog")
+	path := "/v1/catalog"
+	if len(profile) > 0 && profile[0] != "" {
+		path += "?profile=" + url.QueryEscape(profile[0])
+	}
+
+	resp, err := req.Execute("GET", path)
 	if err != nil {
 		return nil, err
 	}
@@ -476,10 +489,132 @@ func (c *Client) ListReleases(owner, slug string) ([]LibraryReleaseInfo, error) 
 	return resp.Releases, nil
 }
 
-func (c *Client) InstallLibrary(owner, slug string) error {
-	return c.do("POST", fmt.Sprintf("/v1/libraries/%s/%s/install", owner, slug), nil, nil)
+// Token endpoints
+
+type CreateTokenRequest struct {
+	Name      string `json:"name"`
+	ExpiresIn string `json:"expires_in,omitempty"`
+	ProfileID string `json:"profile_id,omitempty"`
 }
 
-func (c *Client) UninstallLibrary(owner, slug string) error {
-	return c.do("DELETE", fmt.Sprintf("/v1/libraries/%s/%s/install", owner, slug), nil, nil)
+type CreateTokenResponse struct {
+	Token       string  `json:"token"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	TokenPrefix string  `json:"token_prefix"`
+	ProfileID   *string `json:"profile_id,omitempty"`
+	ExpiresAt   *string `json:"expires_at,omitempty"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+type APITokenInfo struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	TokenPrefix string  `json:"token_prefix"`
+	ProfileID   *string `json:"profile_id,omitempty"`
+	LastUsedAt  *string `json:"last_used_at,omitempty"`
+	ExpiresAt   *string `json:"expires_at,omitempty"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+type ListTokensResponse struct {
+	Tokens []APITokenInfo `json:"tokens"`
+}
+
+func (c *Client) CreateToken(req *CreateTokenRequest) (*CreateTokenResponse, error) {
+	body := map[string]any{"name": req.Name}
+	if req.ExpiresIn != "" {
+		body["expires_in"] = req.ExpiresIn
+	}
+	if req.ProfileID != "" {
+		body["profile_id"] = req.ProfileID
+	}
+	var resp CreateTokenResponse
+	if err := c.do("POST", "/v1/tokens", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) ListTokens() (*ListTokensResponse, error) {
+	var resp ListTokensResponse
+	if err := c.do("GET", "/v1/tokens", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) RevokeToken(id string) error {
+	return c.do("DELETE", "/v1/tokens/"+id, nil, nil)
+}
+
+// Profile endpoints
+
+type ProfileInfo struct {
+	ID          string `json:"id"`
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IsDefault   bool   `json:"is_default"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type ListProfilesResponse struct {
+	Profiles []ProfileInfo `json:"profiles"`
+}
+
+type ProfileDetailResponse struct {
+	Profile   ProfileInfo     `json:"profile"`
+	Libraries json.RawMessage `json:"libraries"`
+}
+
+func (c *Client) CreateProfile(slug, name, description string) (*ProfileInfo, error) {
+	var resp ProfileInfo
+	body := map[string]string{
+		"slug":        slug,
+		"name":        name,
+		"description": description,
+	}
+	if err := c.do("POST", "/v1/profiles", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) ListProfiles() (*ListProfilesResponse, error) {
+	var resp ListProfilesResponse
+	if err := c.do("GET", "/v1/profiles", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) GetProfile(slug string) (*ProfileDetailResponse, error) {
+	var resp ProfileDetailResponse
+	if err := c.do("GET", "/v1/profiles/"+slug, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) DeleteProfile(slug string, force bool) error {
+	path := "/v1/profiles/" + slug
+	if force {
+		path += "?force=true"
+	}
+	return c.do("DELETE", path, nil, nil)
+}
+
+func (c *Client) SetDefaultProfile(slug string) error {
+	return c.do("POST", "/v1/profiles/"+slug+"/default", nil, nil)
+}
+
+func (c *Client) AddLibraryToProfile(profileSlug, library string) error {
+	body := map[string]string{"library": library}
+	return c.do("POST", "/v1/profiles/"+profileSlug+"/libraries", body, nil)
+}
+
+func (c *Client) RemoveLibraryFromProfile(profileSlug, owner, libSlug string) error {
+	return c.do("DELETE", fmt.Sprintf("/v1/profiles/%s/libraries/%s/%s", profileSlug, owner, libSlug), nil, nil)
 }

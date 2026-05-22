@@ -12,6 +12,7 @@ import (
 
 	"mycli.sh/cli/internal/cache"
 	"mycli.sh/cli/internal/client"
+	"mycli.sh/cli/internal/config"
 	"mycli.sh/cli/internal/history"
 	"mycli.sh/cli/internal/library"
 )
@@ -79,7 +80,12 @@ func loadPickerItems() []pickerItem {
 	seen := make(map[string]bool) // dedup key: "source:slug"
 
 	// 2. API personal commands
-	if catalog, err := cache.GetCatalog(); err == nil && catalog != nil {
+	cfg, _ := config.Load()
+	profile := config.DefaultProfileSlug
+	if cfg != nil {
+		profile = cfg.GetActiveProfile()
+	}
+	if catalog, err := cache.GetCatalog(profile); err == nil && catalog != nil {
 		for _, ci := range catalog.Items {
 			if ci.Library == "" {
 				key := "personal:" + ci.Slug

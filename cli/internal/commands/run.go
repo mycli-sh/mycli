@@ -10,6 +10,7 @@ import (
 
 	"mycli.sh/cli/internal/cache"
 	"mycli.sh/cli/internal/client"
+	"mycli.sh/cli/internal/config"
 	"mycli.sh/cli/internal/engine"
 	"mycli.sh/cli/internal/history"
 	"mycli.sh/cli/internal/library"
@@ -36,7 +37,12 @@ Use -f to run a spec file directly without pushing:
 			if len(args) > 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			catalog, err := cache.GetCatalog()
+			cfg, _ := config.Load()
+			profile := config.DefaultProfileSlug
+			if cfg != nil {
+				profile = cfg.GetActiveProfile()
+			}
+			catalog, err := cache.GetCatalog(profile)
 			if err != nil || catalog == nil {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
@@ -71,7 +77,12 @@ Use -f to run a spec file directly without pushing:
 				return err
 			}
 
-			item, _ := cache.GetCatalogItem(slug)
+			cfg, _ := config.Load()
+			profile := config.DefaultProfileSlug
+			if cfg != nil {
+				profile = cfg.GetActiveProfile()
+			}
+			item, _ := cache.GetCatalogItem(profile, slug)
 			return executeAndRecord(s, slug, cmdArgs, yes, item)
 		},
 	}
@@ -120,7 +131,12 @@ func runPickerSelection(item *pickerItem, yes bool) error {
 		}
 		return executeAndRecord(s, item.CatalogItem.Slug, nil, yes, item.CatalogItem)
 	case sourceLibrary:
-		s, err := cache.GetLibrarySpec(item.LibraryKey, item.CatalogItem.Slug)
+		cfg, _ := config.Load()
+		profile := config.DefaultProfileSlug
+		if cfg != nil {
+			profile = cfg.GetActiveProfile()
+		}
+		s, err := cache.GetLibrarySpec(profile, item.LibraryKey, item.CatalogItem.Slug)
 		if err != nil {
 			return err
 		}

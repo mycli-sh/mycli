@@ -28,7 +28,6 @@ type Querier interface {
 	GetCommandByID(ctx context.Context, id uuid.UUID) (Command, error)
 	GetCommandByLibraryAndSlug(ctx context.Context, arg GetCommandByLibraryAndSlugParams) (Command, error)
 	GetCommandByOwnerAndSlug(ctx context.Context, arg GetCommandByOwnerAndSlugParams) (Command, error)
-	GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]Library, error)
 	GetLatestHashByCommand(ctx context.Context, commandID uuid.UUID) (string, error)
 	GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (CommandVersion, error)
 	GetLibraryByOwnerSlug(ctx context.Context, arg GetLibraryByOwnerSlugParams) (Library, error)
@@ -46,8 +45,6 @@ type Querier interface {
 	GetVersionByCommandAndVersion(ctx context.Context, arg GetVersionByCommandAndVersionParams) (CommandVersion, error)
 	IncrementInstallCount(ctx context.Context, id uuid.UUID) error
 	IncrementMagicLinkOTPAttempts(ctx context.Context, id uuid.UUID) (int32, error)
-	InstallLibrary(ctx context.Context, arg InstallLibraryParams) error
-	IsLibraryInstalled(ctx context.Context, arg IsLibraryInstalledParams) (bool, error)
 	IsUsernameTaken(ctx context.Context, lower string) (bool, error)
 	LibraryReleaseExists(ctx context.Context, arg LibraryReleaseExistsParams) (bool, error)
 	ListCommandsByLibrary(ctx context.Context, libraryID *uuid.UUID) ([]ListCommandsByLibraryRow, error)
@@ -61,7 +58,6 @@ type Querier interface {
 	RevokeSessionByDeviceID(ctx context.Context, arg RevokeSessionByDeviceIDParams) error
 	SetUsername(ctx context.Context, arg SetUsernameParams) (int64, error)
 	SoftDeleteCommand(ctx context.Context, id uuid.UUID) (int64, error)
-	UninstallLibrary(ctx context.Context, arg UninstallLibraryParams) (int64, error)
 	UpdateCommandMeta(ctx context.Context, arg UpdateCommandMetaParams) error
 	UpdateLibraryLatestVersion(ctx context.Context, arg UpdateLibraryLatestVersionParams) error
 	UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error
