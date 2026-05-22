@@ -34,13 +34,14 @@ func TestHappyPath_PublishInstallRun(t *testing.T) {
 	)
 
 	// INSTALL: same user installs the library through the real CLI binary.
+	// `library` is mounted at the root
 	home := t.TempDir()
-	res := h.Run(t, home, token, "cli", "library", "install", "alice/mylib")
+	res := h.Run(t, home, token, "library", "install", "alice/mylib")
 	if res.ExitCode != 0 {
 		t.Fatalf("install exit=%d stdout=%q stderr=%q", res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stdout, "Installed") {
-		t.Errorf("install stdout missing \"Installed\": %q", res.Stdout)
+		t.Fatalf("install stdout missing \"Installed\": %q (stderr=%q)", res.Stdout, res.Stderr)
 	}
 
 	// RUN: invoke the command and confirm the spec's echo lands in stdout.
