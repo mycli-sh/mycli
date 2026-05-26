@@ -80,15 +80,15 @@ export default defineConfig({
           items: [
             {
               label: "CLI Commands",
-              autogenerate: { directory: "reference/cli" },
+              items: [{ autogenerate: { directory: "reference/cli" } }],
             },
             {
               label: "Source Commands",
-              autogenerate: { directory: "reference/source" },
+              items: [{ autogenerate: { directory: "reference/source" } }],
             },
             {
               label: "Library Commands",
-              autogenerate: { directory: "reference/library" },
+              items: [{ autogenerate: { directory: "reference/library" } }],
             },
             { label: "Spec Format", slug: "reference/spec-format" },
             { label: "Library Manifest", slug: "reference/library-manifest" },
