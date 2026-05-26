@@ -55,7 +55,7 @@ Clears stored credentials from the keyring and local file.
 
 ## Token refresh
 
-Access tokens are short-lived JWTs. The CLI automatically refreshes tokens using a refresh token when needed. You should rarely need to log in again.
+Access tokens are short-lived JWTs that the CLI refreshes automatically — both reactively (on a 401) and proactively just before they expire. To keep sessions alive across long idle periods, the CLI also fires a silent refresh roughly once a week whenever you run any `my` command, and each refresh extends the session by another 30 days. In practice: if you use mycli at least every couple of weeks you should never need to log in again.
 
 ## API tokens (for CI and scripts)
 
