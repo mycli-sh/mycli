@@ -1,0 +1,82 @@
+---
+title: my cli token
+description: Manage API tokens for CI/CD and automation.
+---
+
+```bash
+my cli token <subcommand>
+```
+
+API tokens (`myc_…`) are long-lived bearer credentials for non-interactive use. They bypass the magic-link login when exported as `MY_API_TOKEN`. See the [Authentication guide](/guides/authentication/#api-tokens-for-ci-and-scripts) for background.
+
+Token-management subcommands require JWT auth — you cannot manage tokens with another API token.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| [`create <name>`](#create) | Mint a new API token |
+| [`list`](#list) | List your tokens |
+| [`revoke <id\|name>`](#revoke) | Revoke a token |
+
+## create
+
+```bash
+my cli token create <name> [--expires-in 90d] [--profile <slug>]
+```
+
+Creates a new API token and prints the raw value **once**. Store it somewhere safe (e.g. your secrets manager) — the server only stores a SHA-256 hash and cannot recover the original.
+
+| Flag | Description |
+|------|-------------|
+| `--expires-in` | Duration (`30d`, `90d`, `1y`, `12h`). Omit for a token that never expires. |
+| `--profile` | Scope the token to a profile. The server uses the scoped profile when resolving `GET /v1/catalog`. |
+
+Limits:
+
+- **10 tokens per user.** Revoke one first if you hit the cap (`409 TOKEN_LIMIT_REACHED`).
+- **Names ≤ 100 characters.**
+
+```bash
+my cli token create ci-deploy --expires-in 90d
+# Token: myc_3f12c4...
+# Save this token — it won't be shown again.
+# Use it with: export MY_API_TOKEN=<token>
+```
+
+## list
+
+```bash
+my cli token list
+```
+
+Lists your tokens. The raw secret is never returned by the API — only the prefix (`myc_3f12c4...`), last-used timestamp, and expiry.
+
+## revoke
+
+```bash
+my cli token revoke <id|name> [--force]
+```
+
+Revokes a token by ID or name. The CLI prompts for confirmation (showing the token's name and prefix) unless `--force` is passed.
+
+```bash
+my cli token revoke ci-deploy
+# Revoke token "ci-deploy" (myc_3f12c4...)? [y/N]
+```
+
+## Using a token
+
+```bash
+export MY_API_TOKEN=myc_3f12c4...
+my library install kubernetes
+my cli run deploy --env staging
+```
+
+The CLI uses the token as the `Authorization: Bearer …` header and skips JWT refresh entirely.
+
+## See also
+
+- [Authentication guide](/guides/authentication/#api-tokens-for-ci-and-scripts)
+- [Profiles guide](/guides/profiles/) — scope tokens to a profile
+- [Environment variables](/reference/environment-variables/)

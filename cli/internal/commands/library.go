@@ -37,6 +37,7 @@ func newLibraryCmd() *cobra.Command {
 	cmd.AddCommand(newLibrarySearchCmd())
 	cmd.AddCommand(newLibraryInstallCmd())
 	cmd.AddCommand(newLibraryUninstallCmd())
+	cmd.AddCommand(newLibrarySyncCmd())
 	cmd.AddCommand(newLibraryListCmd())
 	cmd.AddCommand(newLibraryReleaseCmd())
 	cmd.AddCommand(newLibraryInfoCmd())
@@ -88,13 +89,19 @@ func newLibrarySearchCmd() *cobra.Command {
 }
 
 func newLibraryInstallCmd() *cobra.Command {
+	var profileOverride string
+
 	cmd := &cobra.Command{
 		Use:   "install <identifier>",
-		Short: "Install a library from the registry",
-		Long: `Install a library from the registry.
+		Short: "Install a library into a profile (default: active profile)",
+		Long: `Install a library from the registry into a profile.
 
   my library install kubernetes
   my library install owner/name
+  my library install kubernetes --profile work
+
+Without --profile, the library is added to your active profile (defaults to
+"default"). The MY_PROFILE environment variable is also honored.
 
 For git-backed sources, use 'my source add <git-url>' instead.`,
 		Args: cobra.ExactArgs(1),
@@ -104,9 +111,11 @@ For git-backed sources, use 'my source add <git-url>' instead.`,
 			if isGitURL(identifier) {
 				return fmt.Errorf("git URLs are not supported here; use 'my source add %s' instead", identifier)
 			}
-			return installRegistryLibrary(identifier)
+			return installRegistryLibrary(identifier, profileOverride)
 		},
 	}
+
+	cmd.Flags().StringVar(&profileOverride, "profile", "", "profile to install into (overrides the active profile)")
 
 	return cmd
 }
@@ -120,7 +129,7 @@ func isGitURL(s string) bool {
 		(strings.Contains(s, "@") && strings.Contains(s, ":"))
 }
 
-func installRegistryLibrary(identifier string) error {
+func installRegistryLibrary(identifier, profileOverride string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -137,9 +146,14 @@ func installRegistryLibrary(identifier string) error {
 		return fmt.Errorf("library %q not found: %w", identifier, err)
 	}
 
-	// Add to the active profile (always non-empty — defaults to "default") and sync.
+	// Resolve target profile: --profile flag wins, else active profile.
+	profile := profileOverride
+	if profile == "" {
+		profile = cfg.GetActiveProfile()
+	}
+
+	// Add to the target profile and sync.
 	if auth.IsLoggedIn() {
-		profile := cfg.GetActiveProfile()
 		if err := c.AddLibraryToProfile(profile, identifier); err != nil {
 			return fmt.Errorf("failed to add to profile %q: %w", profile, err)
 		}
@@ -206,10 +220,107 @@ func completeInstalledLibraries(cmd *cobra.Command, args []string, toComplete st
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
+func newLibrarySyncCmd() *cobra.Command {
+	var profileOverride string
+	var syncAll bool
+
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Refresh the library catalog for a profile (default: active profile)",
+		Long: `Downloads the latest library catalog so commands are available locally.
+
+Profile resolution: --profile flag > MY_PROFILE env > active profile config > "default".
+
+Examples:
+  my library sync                       # sync the active profile
+  my library sync --profile work        # sync 'work' explicitly
+  my library sync --all                 # sync every profile you own
+  MY_PROFILE=ci my library sync         # sync via env var`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !auth.IsLoggedIn() {
+				return fmt.Errorf("not logged in (set MY_API_TOKEN or run 'my cli login')")
+			}
+			if syncAll && profileOverride != "" {
+				return fmt.Errorf("--all and --profile are mutually exclusive")
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			c := client.New(resolveAPIURL(cfg))
+			defer c.Close()
+
+			if syncAll {
+				return syncAllProfiles(c)
+			}
+
+			profile := profileOverride
+			if profile == "" {
+				profile = cfg.GetActiveProfile()
+			}
+			return syncOneProfile(c, profile)
+		},
+	}
+
+	cmd.Flags().StringVar(&profileOverride, "profile", "", "profile to sync (overrides the active profile)")
+	cmd.Flags().BoolVar(&syncAll, "all", false, "sync every profile you own")
+
+	return cmd
+}
+
+func syncOneProfile(c *client.Client, profile string) error {
+	fmt.Printf("Syncing profile %q...\n", profile)
+	fetched, err := cache.SyncProfile(c, profile, true)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+	if fetched == 0 {
+		fmt.Println("Already up to date.")
+	} else {
+		fmt.Printf("Synced %d command(s).\n", fetched)
+	}
+	return nil
+}
+
+func syncAllProfiles(c *client.Client) error {
+	resp, err := c.ListProfiles()
+	if err != nil {
+		return fmt.Errorf("list profiles: %w", err)
+	}
+	if len(resp.Profiles) == 0 {
+		fmt.Println("No profiles to sync.")
+		return nil
+	}
+
+	var failed []string
+	for _, p := range resp.Profiles {
+		fmt.Printf("Syncing profile %q...\n", p.Slug)
+		fetched, err := cache.SyncProfile(c, p.Slug, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: %v\n", err)
+			failed = append(failed, p.Slug)
+			continue
+		}
+		if fetched == 0 {
+			fmt.Println("  Already up to date.")
+		} else {
+			fmt.Printf("  Synced %d command(s).\n", fetched)
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d profile(s) failed to sync: %s", len(failed), strings.Join(failed, ", "))
+	}
+	return nil
+}
+
 func newLibraryUninstallCmd() *cobra.Command {
-	return &cobra.Command{
+	var profileOverride string
+
+	cmd := &cobra.Command{
 		Use:               "uninstall <name>",
-		Short:             "Uninstall a registry library",
+		Short:             "Uninstall a registry library from a profile (default: active profile)",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeInstalledLibraries,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -229,13 +340,17 @@ func newLibraryUninstallCmd() *cobra.Command {
 				return fmt.Errorf("%q is a git source; use 'my source remove %s' instead", name, name)
 			}
 
-			// Remove from the active profile on the server (best-effort).
+			// Remove from the target profile on the server (best-effort).
 			if entry.Kind == "registry" && auth.IsLoggedIn() {
 				cfg, err := config.Load()
 				if err == nil {
 					c := client.New(resolveAPIURL(cfg))
 					defer c.Close()
-					_ = c.RemoveLibraryFromProfile(cfg.GetActiveProfile(), entry.Owner, entry.Slug)
+					profile := profileOverride
+					if profile == "" {
+						profile = cfg.GetActiveProfile()
+					}
+					_ = c.RemoveLibraryFromProfile(profile, entry.Owner, entry.Slug)
 				}
 			}
 
@@ -248,6 +363,10 @@ func newLibraryUninstallCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&profileOverride, "profile", "", "profile to remove the library from (overrides the active profile)")
+
+	return cmd
 }
 
 func newLibraryListCmd() *cobra.Command {

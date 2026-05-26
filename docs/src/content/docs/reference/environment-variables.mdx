@@ -1,11 +1,20 @@
 ---
 title: Environment Variables
-description: API server configuration reference.
+description: CLI and API server environment variable reference.
 ---
 
-The mycli API server reads all configuration from environment variables.
+## CLI environment variables
+
+These affect the `my` CLI on the user's machine.
+
+| Variable | Description |
+|----------|-------------|
+| `MY_API_TOKEN` | Use an API token (`myc_…`) as the Bearer credential. The CLI skips magic-link login and JWT refresh entirely. Mint a token with `my cli token create`. |
+| `MY_PROFILE` | Override the [active profile](/guides/profiles/) for this invocation. Takes priority over `~/.my/config.json`; falls back to `default` if neither is set. |
 
 ## Server configuration
+
+The mycli API server reads all configuration from environment variables.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

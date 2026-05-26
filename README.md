@@ -56,14 +56,16 @@ make dev
 
 | Command | Description |
 |---------|-------------|
-| `library install <name>` | Install a library from the registry |
-| `library uninstall <name>` | Remove a registry-installed library |
+| `library install <name> [--profile <slug>]` | Add a library to a profile (default: active) and sync |
+| `library uninstall <name> [--profile <slug>]` | Remove a library from a profile (default: active) |
+| `library sync [--profile <slug>] [--all]` | Refresh the catalog for a profile (or all of them) |
 | `library list` | List all libraries (from any source) |
 | `library search <query>` | Search public libraries |
 | `library explore` | Interactive TUI for browsing libraries |
 | `library info <identifier>` | Show library details |
 | `library release [tag]` | Create a versioned release from a git tag (interactive if omitted) |
-| `library sync` | Sync registry libraries with server |
+
+> Libraries are now scoped to **profiles**. `install`/`uninstall`/`sync` operate on the currently active profile (defaults to `default`).
 
 ### Sources (git-backed)
 
@@ -74,13 +76,34 @@ make dev
 | `source list` | List installed git sources |
 | `source update [name]` | Update all or a specific git source (git pull) |
 
-### Authentication
+### Profiles
+
+A **profile** is a named bucket of installed libraries. Every account has a `default` profile that can't be deleted; create more to scope different workflows (e.g. `work`, `ci`). The CLI keeps an *active profile* locally; library install/uninstall and `run` resolve against it.
 
 | Command | Description |
 |---------|-------------|
-| `cli login` | Log in via email magic link (auto-syncs after login) |
+| `cli profile create <slug>` | Create a new profile |
+| `cli profile list` | List your profiles (with `*` on the active one) |
+| `cli profile show [slug]` | Show profile details + its libraries (offline-tolerant) |
+| `cli profile set <slug>` | Switch the locally active profile (`MY_PROFILE` env var also overrides) |
+| `cli profile delete <slug>` | Delete a profile (default profile cannot be deleted) |
+
+> To add, remove, or refresh the libraries inside a profile, use `my library install`, `my library uninstall`, and `my library sync` — each accepts a `--profile <slug>` flag.
+
+### Authentication
+
+mycli supports two auth modes: an interactive magic-link login, and `myc_…` API tokens for CI / non-interactive use.
+
+| Command | Description |
+|---------|-------------|
+| `cli login` | Log in via email magic link (auto-syncs the `default` profile after login) |
 | `cli logout` | Clear stored credentials |
 | `cli whoami` | Show current user info (ID, email) |
+| `cli token create <name>` | Mint an API token. Flags: `--expires-in 90d`, `--profile <slug>`. Shown once. |
+| `cli token list` | List your API tokens (prefix + last-used + expiry) |
+| `cli token revoke <id\|name>` | Revoke a token (prompts unless `--force`) |
+
+To run non-interactively, export the raw token: `export MY_API_TOKEN=myc_…`. The CLI then skips JWT refresh and uses the token directly. Limits: 10 tokens per user, names up to 100 characters. Token management routes are JWT-only — API tokens can't mint or revoke other tokens.
 
 ### Commands
 
@@ -99,6 +122,13 @@ make dev
 
 **Global flags:**
 - `--api-url` — Override the API server URL
+
+**CLI environment variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `MY_API_TOKEN` | Use an API token (`myc_…`) as the Bearer credential. Skips magic-link login and JWT refresh. |
+| `MY_PROFILE` | Override the active profile for this invocation (takes priority over `~/.my/config.json`). |
 
 **Command-specific flags:**
 
@@ -318,10 +348,28 @@ make dev                      # Build and start on :8080
 | `DELETE` | `/v1/commands/{id}` | Delete a command (soft delete) |
 | `POST` | `/v1/commands/{id}/versions` | Publish a version |
 | `GET` | `/v1/commands/{id}/versions/{version}` | Get a specific version |
-| `GET` | `/v1/catalog` | Get synced catalog (supports ETag) |
-| `POST` | `/v1/libraries/{slug}/releases` | Create a release |
-| `POST` | `/v1/libraries/{owner}/{slug}/install` | Install a library |
-| `DELETE` | `/v1/libraries/{owner}/{slug}/install` | Uninstall a library |
+| `GET` | `/v1/catalog` | Get synced catalog (supports ETag). Scope with `?profile=<slug>` or via an API token's `profile_id`. |
+| `POST` | `/v1/libraries/{slug}/releases` | Create a release (body limit: 4 MiB) |
+| `POST` | `/v1/profiles` | Create a profile |
+| `GET` | `/v1/profiles` | List profiles |
+| `GET` | `/v1/profiles/{slug}` | Get a profile + its libraries |
+| `PATCH` | `/v1/profiles/{slug}` | Update name/description |
+| `DELETE` | `/v1/profiles/{slug}` | Delete a profile (refuses default; `?force=true` cascades scoped tokens) |
+| `POST` | `/v1/profiles/{slug}/libraries` | Add a library to a profile |
+| `DELETE` | `/v1/profiles/{slug}/libraries/{owner}/{libSlug}` | Remove a library from a profile |
+| `GET` | `/v1/profiles/{slug}/libraries` | List a profile's libraries |
+
+**Authenticated (JWT only — API tokens are not accepted):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/tokens` | Mint an API token (max 10 per user) |
+| `GET` | `/v1/tokens` | List your API tokens (no raw secret returned) |
+| `DELETE` | `/v1/tokens/{id}` | Revoke a token |
+
+### Request body limits
+
+All authenticated routes cap request bodies at **256 KiB** by default. The release endpoint allows **4 MiB**. Oversized requests return `413 PAYLOAD_TOO_LARGE`. The CLI pre-validates release payloads so users get a clear local error before a wire-level rejection.
 
 ## Development
 

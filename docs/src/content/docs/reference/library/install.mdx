@@ -1,36 +1,55 @@
 ---
 title: my library install
-description: Install a library from the registry.
+description: Add a registry library to your active profile.
 ---
 
 ```bash
 my library install <name>
 ```
 
-Installs a library by name from the public registry. Downloads the library and makes its commands available locally.
+Adds a library from the public registry to your [active profile](/guides/profiles/) on the server, then syncs the catalog so its commands are available locally.
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `name` | Library name from the registry (required) |
+| `name` | Library name from the registry (`slug` or `owner/slug`) (required) |
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--profile <slug>` | Install into a specific profile instead of the active one |
 
 ## Examples
 
 ```bash
-# Install from the registry
+# Install into the active profile
 my library install kubernetes
 
-# Install a deployment tools library
-my library install deploy-tools
+# Install a specific owner's library
+my library install acme/deploy-tools
+
+# Install into a different profile via flag
+my library install kubernetes --profile work
+
+# Or via env var
+MY_PROFILE=ci my library install kubernetes
 ```
 
 ## Behavior
 
-1. Resolves the library name in the public registry
-2. Downloads the library and validates all command specs
-3. Commands become available as `my <library> <slug>`
+1. Looks the library up in the public registry.
+2. Resolves the target profile: `--profile` flag > `MY_PROFILE` > active profile in `~/.my/config.json` > `default`.
+3. Calls `POST /v1/profiles/{profile}/libraries` on the server.
+4. Syncs that profile's catalog so commands appear under `my <library> <slug>`.
 
 :::tip
 To install from a git URL instead, use [`my source add`](/reference/source/add/).
 :::
+
+## See also
+
+- [`my library uninstall`](/reference/library/uninstall/)
+- [`my library sync`](/reference/library/sync/)
+- [Profiles guide](/guides/profiles/)

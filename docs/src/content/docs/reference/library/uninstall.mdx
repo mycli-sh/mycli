@@ -1,13 +1,13 @@
 ---
 title: my library uninstall
-description: Remove a registry-installed library.
+description: Remove a library from your active profile.
 ---
 
 ```bash
 my library uninstall <name>
 ```
 
-Removes a library that was installed from the registry.
+Removes a library from your [active profile](/guides/profiles/) on the server and from the local registry. Commands in the library are no longer available as `my <library> <slug>`.
 
 ## Arguments
 
@@ -15,16 +15,30 @@ Removes a library that was installed from the registry.
 |----------|-------------|
 | `name` | Name of the library to uninstall (required) |
 
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--profile <slug>` | Remove from a specific profile instead of the active one |
+
 ## Examples
 
 ```bash
 my library uninstall kubernetes
+
+# Remove from a specific profile via flag
+my library uninstall kubernetes --profile work
+
+# Or via env var
+MY_PROFILE=ci my library uninstall custom-tools
 ```
 
 ## Behavior
 
-- Removes the library and its commands from the local installation
-- Library commands are no longer available
+- Resolves the target profile: `--profile` flag > `MY_PROFILE` > active profile in `~/.my/config.json` > `default`.
+- Calls `DELETE /v1/profiles/{profile}/libraries/{owner}/{slug}` on the server.
+- Removes the local registry entry under `~/.my/sources/sources.json`.
+- The library remains installed in any other profile that has it; only the targeted profile is affected.
 
 :::note
 To remove a git-backed source, use [`my source remove`](/reference/source/remove/) instead.

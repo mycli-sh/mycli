@@ -70,10 +70,19 @@ Uninstall a registry library:
 my library uninstall kubernetes
 ```
 
-Sync registry libraries manually to fetch the latest commands:
+Registry installs are scoped to your **active [profile](/guides/profiles/)** on the server. With no profile explicitly set, the CLI uses the `default` profile (auto-created on signup). Switch profiles with `my cli profile set <slug>`, or target a non-active profile for one operation with the `--profile` flag:
 
 ```bash
-my library sync
+my library install kubernetes --profile work
+my library uninstall kubernetes --profile work
+```
+
+To refresh the cache without (un)installing anything, run `my library sync`:
+
+```bash
+my library sync                  # active profile
+my library sync --profile work   # a specific profile
+my library sync --all            # every profile you own (useful before going offline)
 ```
 
 ## Discover libraries
@@ -184,3 +193,4 @@ my library release --dry-run
 <LinkCard title="Library Manifest Reference" description="Full manifest format." href="/reference/library-manifest/" />
 <LinkCard title="source add" description="Add a git-backed source." href="/reference/source/add/" />
 <LinkCard title="library install" description="Install from the registry." href="/reference/library/install/" />
+<LinkCard title="Profiles" description="Group libraries by workflow." href="/guides/profiles/" />
