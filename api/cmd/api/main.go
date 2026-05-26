@@ -95,6 +95,7 @@ func main() {
 
 	// Public routes (no auth)
 	r.Group(func(r chi.Router) {
+		r.Use(middleware.BodyLimit(middleware.DefaultBodyLimitBytes))
 		r.Use(middleware.RateLimit(authLimiter, middleware.IPKey))
 
 		// Device flow
@@ -130,6 +131,7 @@ func main() {
 
 	// Authenticated routes (no username required) — JWT only for token management
 	r.Group(func(r chi.Router) {
+		r.Use(middleware.BodyLimit(middleware.DefaultBodyLimitBytes))
 		r.Use(middleware.Auth(cfg.JWTSecret, s))
 		r.Use(middleware.RateLimit(apiLimiter, middleware.UserKey))
 
@@ -156,6 +158,7 @@ func main() {
 
 	// Authenticated routes (username required) — supports both JWT and API tokens
 	r.Group(func(r chi.Router) {
+		r.Use(middleware.BodyLimit(middleware.DefaultBodyLimitBytes))
 		r.Use(middleware.Auth(cfg.JWTSecret, s))
 		r.Use(middleware.RequireUsername(s))
 		r.Use(middleware.RateLimit(apiLimiter, middleware.UserKey))
@@ -174,8 +177,9 @@ func main() {
 		// Catalog
 		r.Get("/v1/catalog", catalogHandler.GetCatalog)
 
-		// Libraries
-		r.Post("/v1/libraries/{slug}/releases", libraryHandler.CreateRelease)
+		// Libraries — releases bundle many specs, so allow a larger body.
+		r.With(middleware.BodyLimit(middleware.ReleaseBodyLimitBytes)).
+			Post("/v1/libraries/{slug}/releases", libraryHandler.CreateRelease)
 
 		// Profiles
 		r.Post("/v1/profiles", profileHandler.Create)

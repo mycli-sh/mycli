@@ -468,7 +468,22 @@ type LibraryReleaseInfo struct {
 	ReleasedAt   string `json:"released_at"`
 }
 
+// MaxReleaseBodyBytes mirrors api/internal/middleware.ReleaseBodyLimitBytes.
+// Keep in sync; the CLI rejects oversized payloads before transmitting so
+// users get a clear message instead of a wire-level 413.
+const MaxReleaseBodyBytes = 4 * 1024 * 1024
+
 func (c *Client) CreateRelease(slug string, req *CreateReleaseRequest) (*CreateReleaseResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal release body: %w", err)
+	}
+	if int64(len(body)) > MaxReleaseBodyBytes {
+		return nil, fmt.Errorf(
+			"release payload is %d bytes, exceeds server limit of %d bytes; reduce the number of commands or the size of individual specs",
+			len(body), MaxReleaseBodyBytes,
+		)
+	}
 	var resp CreateReleaseResponse
 	if err := c.do("POST", "/v1/libraries/"+slug+"/releases", req, &resp); err != nil {
 		return nil, err

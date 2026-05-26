@@ -108,10 +108,8 @@ func authenticateToken(ctx context.Context, jwtSecret string, tokenLookup APITok
 		if apiToken.ProfileID != nil {
 			ctx = context.WithValue(ctx, ProfileIDKey, *apiToken.ProfileID)
 		}
-		// Update last_used_at asynchronously (best-effort)
-		go func() {
-			_ = tokenLookup.UpdateAPITokenLastUsed(context.Background(), apiToken.ID)
-		}()
+		// last_used_at is best-effort; one indexed UPDATE per request.
+		_ = tokenLookup.UpdateAPITokenLastUsed(ctx, apiToken.ID)
 		return ctx, apiToken.UserID, nil
 	}
 

@@ -17,7 +17,10 @@ import (
 	"mycli.sh/api/internal/store"
 )
 
-const maxTokenNameLength = 100
+const (
+	maxTokenNameLength = 100
+	maxTokensPerUser   = 10
+)
 
 type TokenHandler struct {
 	store store.TokenStore
@@ -45,6 +48,18 @@ func (h *TokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Name) > maxTokenNameLength {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Sprintf("name must be %d characters or fewer", maxTokenNameLength))
+		return
+	}
+
+	// Cap tokens per user; checked before the expensive crypto/rand call.
+	count, err := h.store.CountAPITokens(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to count tokens")
+		return
+	}
+	if count >= maxTokensPerUser {
+		writeError(w, http.StatusConflict, "TOKEN_LIMIT_REACHED",
+			fmt.Sprintf("you already have %d tokens (max %d); revoke one before creating another", count, maxTokensPerUser))
 		return
 	}
 

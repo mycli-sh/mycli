@@ -86,6 +86,7 @@ type TokenStore interface {
 	RevokeAPIToken(ctx context.Context, id, userID uuid.UUID) error
 	GetAPITokenByHash(ctx context.Context, tokenHash string) (*model.APIToken, error)
 	UpdateAPITokenLastUsed(ctx context.Context, id uuid.UUID) error
+	CountAPITokens(ctx context.Context, userID uuid.UUID) (int, error)
 	GetProfileByOwner(ctx context.Context, ownerID, profileID uuid.UUID) (*model.Profile, error)
 }
 

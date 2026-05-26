@@ -85,6 +85,16 @@ func (s *Store) UpdateAPITokenLastUsed(ctx context.Context, id uuid.UUID) error 
 	return nil
 }
 
+// CountAPITokens returns how many API tokens the user currently owns.
+func (s *Store) CountAPITokens(ctx context.Context, userID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRow(ctx, `SELECT count(*) FROM api_tokens WHERE user_id = $1`, userID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count api tokens: %w", err)
+	}
+	return count, nil
+}
+
 func (s *Store) CountTokensByProfile(ctx context.Context, profileID uuid.UUID) (int, error) {
 	var count int
 	err := s.db.QueryRow(ctx, `SELECT count(*) FROM api_tokens WHERE profile_id = $1`, profileID).Scan(&count)
