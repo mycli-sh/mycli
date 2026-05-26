@@ -67,6 +67,7 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Libraries", slug: "guides/libraries" },
+            { label: "Profiles", slug: "guides/profiles" },
             { label: "Running Commands", slug: "guides/running-commands" },
             { label: "Creating Commands", slug: "guides/creating-commands" },
             { label: "Publishing Commands", slug: "guides/publishing-commands" },

@@ -3,7 +3,27 @@ title: API Endpoints
 description: HTTP API endpoint reference.
 ---
 
-The mycli API server provides REST endpoints for authentication, command management, library browsing, and catalog syncing.
+The mycli API server provides REST endpoints for authentication, command management, library browsing, catalog syncing, profiles, and API tokens.
+
+## Authentication
+
+Most endpoints accept either credential:
+
+- **JWT** (Bearer) from `my cli login`.
+- **API token** (Bearer, `myc_…`) created by `my cli token create`. The token's profile scope (if set) is honored by `GET /v1/catalog`.
+
+Token-management routes (`/v1/tokens/*`) are JWT-only — API tokens cannot manage other tokens.
+
+## Body limits
+
+Request bodies are capped per route:
+
+| Route group | Limit |
+|-------------|-------|
+| Default (all authenticated routes) | 256 KiB |
+| `POST /v1/libraries/{slug}/releases` | 4 MiB |
+
+Oversized requests return `413 PAYLOAD_TOO_LARGE`. The CLI pre-validates release payloads against the same limit so users see a clear local error before the wire-level rejection.
 
 ## Public endpoints (no auth)
 
@@ -33,8 +53,6 @@ The mycli API server provides REST endpoints for authentication, command managem
 
 ## Authenticated endpoints (no username required)
 
-All authenticated endpoints require a valid JWT in the `Authorization: Bearer <token>` header.
-
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/v1/me` | Current user info |
@@ -44,21 +62,62 @@ All authenticated endpoints require a valid JWT in the `Authorization: Bearer <t
 | `DELETE` | `/v1/sessions` | Revoke all sessions |
 | `POST` | `/v1/auth/logout` | Log out (revoke current session) |
 
+### API tokens (JWT only)
+
+These routes accept JWT credentials only. An API token cannot manage tokens.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/tokens` | Create an API token. Body: `{name, expires_in?, profile_id?}`. Returns the raw `myc_…` token once. Max 10 per user; `409 TOKEN_LIMIT_REACHED` over the cap. |
+| `GET` | `/v1/tokens` | List the user's tokens (prefix + last-used + expiry; raw secret never returned). |
+| `DELETE` | `/v1/tokens/{id}` | Revoke a token by ID. |
+
 ## Authenticated endpoints (username required)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/v1/me/sync-summary` | Sync summary |
+| `GET` | `/v1/me/sync-summary` | Sync summary (commands + default-profile libraries) |
 | `POST` | `/v1/commands` | Create a command |
 | `GET` | `/v1/commands` | List commands |
 | `GET` | `/v1/commands/{id}` | Get a command |
 | `DELETE` | `/v1/commands/{id}` | Delete a command (soft delete) |
 | `POST` | `/v1/commands/{id}/versions` | Publish a version |
 | `GET` | `/v1/commands/{id}/versions/{version}` | Get a specific version |
-| `GET` | `/v1/catalog` | Get synced catalog (supports `ETag` / `If-None-Match`) |
-| `POST` | `/v1/libraries/{slug}/releases` | Create a release |
-| `POST` | `/v1/libraries/{owner}/{slug}/install` | Install a library |
-| `DELETE` | `/v1/libraries/{owner}/{slug}/install` | Uninstall a library |
+| `GET` | `/v1/catalog` | Synced catalog (supports `ETag` / `If-None-Match`). Scope with `?profile=<slug>`; otherwise falls back to the API token's `profile_id` and then to the user's `default` profile. |
+| `POST` | `/v1/libraries/{slug}/releases` | Create a release (body limit: 4 MiB) |
+
+### Profiles
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/profiles` | Create a profile (slug must match `^[a-z][a-z0-9-]*$`) |
+| `GET` | `/v1/profiles` | List the user's profiles |
+| `GET` | `/v1/profiles/{slug}` | Get a profile + its libraries (with commands) |
+| `PATCH` | `/v1/profiles/{slug}` | Update `name` / `description`. Slug is immutable. |
+| `DELETE` | `/v1/profiles/{slug}` | Delete a profile. Rejects the `default` profile. If the profile has scoped API tokens, returns `409 HAS_SCOPED_TOKENS` unless `?force=true`. |
+| `POST` | `/v1/profiles/{slug}/libraries` | Add a library to a profile. Body: `{library: "owner/slug"}` or `{library: "slug"}` for system libraries. |
+| `DELETE` | `/v1/profiles/{slug}/libraries/{owner}/{libSlug}` | Remove a library from a profile |
+| `GET` | `/v1/profiles/{slug}/libraries` | List a profile's libraries |
+
+## Error codes
+
+Common JSON error envelopes returned by the API:
+
+| Code | Status | Notes |
+|------|--------|-------|
+| `INVALID_REQUEST` | 400 | Malformed body or invalid field |
+| `INVALID_SPEC` | 400 | Spec failed JSON Schema validation |
+| `UNAUTHORIZED` | 401 | Missing or invalid credential |
+| `JWT_REQUIRED` | 403 | Endpoint requires JWT (e.g., `/v1/tokens/*`) |
+| `USERNAME_REQUIRED` | 403 | Endpoint requires a set username |
+| `NOT_FOUND` | 404 | Entity does not exist or is not owned by the caller |
+| `PROFILE_EXISTS` | 409 | Duplicate profile slug |
+| `RELEASE_EXISTS` | 409 | Library release version already published |
+| `HAS_SCOPED_TOKENS` | 409 | Profile delete blocked by scoped tokens; retry with `?force=true` |
+| `TOKEN_LIMIT_REACHED` | 409 | User has 10 API tokens; revoke one first |
+| `PAYLOAD_TOO_LARGE` | 413 | Body exceeds the route's limit (256 KiB / 4 MiB) |
+| `RATE_LIMITED` | 429 | Rate limit exceeded |
+| `INTERNAL_ERROR` | 500 | Server-side failure |
 
 ## ID format
 

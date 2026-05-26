@@ -1,0 +1,119 @@
+---
+title: Profiles
+description: Group libraries by workflow and scope API tokens.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+A **profile** is a named bucket of installed libraries. Use profiles to separate the tools you reach for in different contexts — for example a `work` profile that has your company's deployment libraries, a `personal` profile that doesn't, and a `ci` profile scoped to whatever a single pipeline needs.
+
+## The default profile
+
+Every account always has a profile named `default`:
+
+- It's created automatically when you sign up.
+- Its slug (`default`) is immutable and the profile itself can't be deleted.
+- If you don't set an active profile explicitly, the CLI uses it.
+
+Library installs land in `default` until you opt into something else, so most users never have to think about profiles.
+
+## Active profile
+
+The *active profile* is a CLI-local preference stored in `~/.my/config.json`. It controls:
+
+- Which profile `my library install`/`uninstall` mutate on the server.
+- Which profile's cache `my cli run` resolves commands against.
+- Which catalog `my library sync` (without an argument) refreshes.
+
+Resolution order, top wins:
+
+1. `MY_PROFILE` environment variable.
+2. `ActiveProfile` in `~/.my/config.json` (set via `my cli profile set <slug>`).
+3. `default`.
+
+## Common workflow
+
+```bash
+# Create a profile and switch to it
+my cli profile create work
+my cli profile set work
+
+# Anything you install now lands in 'work'
+my library install kubernetes
+my library install terraform
+
+# Switch back when you're done
+my cli profile set default
+```
+
+`profile set` only requires the network if the target profile isn't cached locally yet — once you've synced it once, switching offline works.
+
+## Listing and inspecting
+
+```bash
+my cli profile list           # all profiles; the active one is marked with *
+my cli profile show           # the active profile + its libraries
+my cli profile show work      # any profile by slug
+```
+
+`list` and `show` fall back to cached state when the API is unreachable, so they keep working on a plane or behind a corporate proxy.
+
+## One-off override
+
+For library install/uninstall, the `--profile` flag is the most explicit way to target a different profile without flipping the active one:
+
+```bash
+my library install custom-tools --profile ci
+my library uninstall old-thing --profile work
+```
+
+For commands without a `--profile` flag (e.g. `my library sync`, `my cli run`), use the `MY_PROFILE` env var:
+
+```bash
+MY_PROFILE=ci my library sync
+MY_PROFILE=ci my cli run deploy
+```
+
+This is also how you'd target a profile inside a CI job that uses an API token:
+
+```bash
+export MY_API_TOKEN=myc_...
+export MY_PROFILE=ci
+my library sync
+my deploy stage
+```
+
+## Cache layout
+
+Each profile gets its own catalog file, with command specs shared across profiles (specs are content-addressable, so there's no duplication):
+
+```
+~/.my/
+  cache/
+    profiles/
+      default/catalog.json
+      work/catalog.json
+      ci/catalog.json
+    specs/
+      <commandID>/<version>.json
+```
+
+If you upgrade from an older version of mycli the pre-profile `~/.my/cache/catalog.json` is moved into `profiles/default/catalog.json` on first run.
+
+## Cleanup
+
+```bash
+my cli profile delete work
+```
+
+If a profile has API tokens scoped to it, the API refuses to delete unless you pass `--force`. Deleting the active profile clears the active-profile preference; subsequent commands fall back to `default`.
+
+<Aside type="caution">
+You can't delete the `default` profile. Treat it as a system invariant — every account always has one.
+</Aside>
+
+## Next steps
+
+<LinkCard title="CLI Reference: profile" description="All profile subcommands and flags." href="/reference/cli/profile/" />
+<LinkCard title="Libraries" description="How libraries fit into the profile model." href="/guides/libraries/" />
+<LinkCard title="Authentication" description="Scope an API token to a profile." href="/guides/authentication/" />

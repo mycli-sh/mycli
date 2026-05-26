@@ -1,25 +1,46 @@
 ---
 title: my library sync
-description: Sync registry libraries with the server.
+description: Refresh the library catalog for a profile.
 ---
 
 ```bash
-my library sync
+my library sync [--profile <slug>] [--all]
 ```
 
-Fetches the latest command catalog from the server for all registry-installed libraries. This bypasses the ETag cache to ensure you have the most up-to-date commands.
+Downloads the latest library catalog from the server so commands are available locally. Requires login (`my cli login`) or `MY_API_TOKEN`.
 
-Requires login (`my cli login`).
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--profile <slug>` | Sync a specific profile instead of the active one |
+| `--all` | Sync every profile you own (useful before going offline). Mutually exclusive with `--profile`. |
 
 ## Examples
 
 ```bash
-# Sync all registry libraries
+# Sync the active profile
 my library sync
+
+# Sync a specific profile
+my library sync --profile work
+
+# Sync every profile in one shot
+my library sync --all
+
+# Or target via env var
+MY_PROFILE=ci my library sync
 ```
+
+## Behavior
+
+- Resolves the target profile: `--profile` flag > `MY_PROFILE` env > active profile in `~/.my/config.json` > `default`.
+- Calls `GET /v1/catalog?profile={profile}` and writes the result to `~/.my/cache/profiles/{profile}/catalog.json`.
+- Downloads any spec files not already in the shared `~/.my/cache/specs/` store.
+- With `--all`, repeats the above for every profile the server returns; continues on partial failures and exits non-zero if any profile failed.
 
 ## See also
 
-- [`my library install`](/reference/library/install/) — Install a registry library
-- [`my library list`](/reference/library/list/) — List all installed libraries
-- [`my source update`](/reference/source/update/) — Update git-backed sources
+- [`my library install`](/reference/library/install/) — automatically syncs after install
+- [`my cli profile`](/reference/cli/profile/) — manage profiles themselves
+- [Profiles guide](/guides/profiles/)

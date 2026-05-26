@@ -1,0 +1,72 @@
+---
+title: my cli profile
+description: Manage profiles (named sets of libraries).
+---
+
+```bash
+my cli profile <subcommand>
+```
+
+Profiles group installed libraries by workflow. Every account has a non-deletable `default` profile. See the [Profiles guide](/guides/profiles/) for background.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| [`create <slug>`](#create) | Create a new profile |
+| [`list`](#list) | List your profiles |
+| [`show [slug]`](#show) | Show a profile and its libraries |
+| [`set <slug>`](#set) | Switch the locally active profile |
+| [`delete <slug>`](#delete) | Delete a profile |
+
+To add, remove, or refresh the libraries inside a profile, use [`my library install`](/reference/library/install/), [`my library uninstall`](/reference/library/uninstall/), and [`my library sync`](/reference/library/sync/) — each accepts a `--profile <slug>` flag.
+
+## create
+
+```bash
+my cli profile create <slug> [--name "Display Name"]
+```
+
+Creates a new profile. Slug must match `^[a-z][a-z0-9-]*$` and be unique to your account. Requires login.
+
+## list
+
+```bash
+my cli profile list
+```
+
+Lists your profiles. The currently active profile is marked with `*`. When the API is unreachable, falls back to listing locally cached profiles with a `(cached)` marker.
+
+## show
+
+```bash
+my cli profile show [slug]
+```
+
+Shows a profile and its libraries. Without an argument, shows the active profile. Falls back to the cached catalog when the API is unreachable.
+
+## set
+
+```bash
+my cli profile set <slug>
+```
+
+Switches the locally active profile. Stored in `~/.my/config.json`. The CLI accepts the switch immediately if the profile is already cached locally; otherwise it verifies against the server. On a network error it saves anyway and warns. Only blocks on a definitive remote 404 with no local cache.
+
+`MY_PROFILE=<slug>` overrides this per-invocation.
+
+## delete
+
+```bash
+my cli profile delete <slug> [--force]
+```
+
+Deletes a profile. The `default` profile cannot be deleted. If the profile has API tokens scoped to it, the server returns an error and the CLI prompts to re-run with `--force` (which cascades the scoped tokens).
+
+If you delete the currently active profile, the active-profile preference is cleared and subsequent commands fall back to `default`.
+
+## See also
+
+- [Profiles guide](/guides/profiles/)
+- [`my library install`](/reference/library/install/)
+- [`my cli token`](/reference/cli/token/) — scope tokens to a profile

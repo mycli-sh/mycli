@@ -5,7 +5,10 @@ description: How authentication works in mycli.
 
 import { Aside, LinkCard, Steps } from '@astrojs/starlight/components';
 
-mycli uses email-based magic links for authentication. No passwords needed.
+mycli supports two authentication modes:
+
+- **Interactive** — email magic links via `my cli login`, for day-to-day use on a workstation.
+- **Non-interactive** — `myc_…` API tokens via `MY_API_TOKEN`, for CI, scripts, and headless boxes.
 
 ## Login flow
 
@@ -54,6 +57,51 @@ Clears stored credentials from the keyring and local file.
 
 Access tokens are short-lived JWTs. The CLI automatically refreshes tokens using a refresh token when needed. You should rarely need to log in again.
 
+## API tokens (for CI and scripts)
+
+API tokens are long-lived bearer credentials prefixed `myc_` that bypass the interactive login. They're the right choice for CI jobs, deploy scripts, and any environment without a browser or inbox.
+
+### Create one
+
+```bash
+my cli token create ci-deploy
+# Token: myc_3f12c4...
+# Save this token — it won't be shown again.
+# Use it with: export MY_API_TOKEN=<token>
+```
+
+Common flags:
+
+- `--expires-in 30d` — give the token an expiry (`d`, `h`, `y`).
+- `--profile work` — scope the token's catalog reads to a specific [profile](/guides/profiles/).
+
+### Use one
+
+Export the raw token; the CLI uses it as the `Authorization: Bearer …` header and skips JWT refresh entirely.
+
+```bash
+export MY_API_TOKEN=myc_3f12c4...
+my library install kubernetes
+my cli run deploy --env staging
+```
+
+### Manage them
+
+```bash
+my cli token list                # see prefix + last-used + expiry (raw secret is never shown)
+my cli token revoke ci-deploy    # prompts unless --force
+```
+
+<Aside type="caution">
+Token-management routes (`POST/GET/DELETE /v1/tokens`) require JWT auth — an API token cannot mint or revoke another token. This is intentional: if a token leaks, the blast radius is limited to data access, not credential proliferation.
+</Aside>
+
+### Limits
+
+- **10 tokens per user.** Revoke one before creating an 11th.
+- **Names ≤ 100 characters.**
+- **Raw token is shown once at creation.** It's stored only as a SHA-256 hash on the server.
+
 ## Working without an account
 
 <Aside type="tip">
@@ -68,4 +116,6 @@ Only publishing commands to the registry requires authentication.
 ## Next steps
 
 <LinkCard title="CLI Reference: login" description="Login command details." href="/reference/cli/login/" />
-<LinkCard title="Environment Variables" description="API configuration." href="/reference/environment-variables/" />
+<LinkCard title="CLI Reference: token" description="Manage API tokens." href="/reference/cli/token/" />
+<LinkCard title="Profiles" description="Scope libraries by workflow." href="/guides/profiles/" />
+<LinkCard title="Environment Variables" description="CLI and server configuration." href="/reference/environment-variables/" />
