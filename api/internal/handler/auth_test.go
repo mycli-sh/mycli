@@ -38,7 +38,7 @@ type mockAuthStore struct {
 	RevokeSessionFn                  func(ctx context.Context, id uuid.UUID) error
 	GetSessionByTokenHashFn          func(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsedFn          func(ctx context.Context, id uuid.UUID) error
-	UpdateSessionRefreshTokenHashFn  func(ctx context.Context, id uuid.UUID, newHash string) error
+	UpdateSessionRefreshTokenHashFn  func(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error
 	CountOTPAttemptsByDeviceCodeFn   func(ctx context.Context, deviceCode string) (int, error)
 	GetLibraryBySlugFn               func(ctx context.Context, slug string) (*model.Library, error)
 }
@@ -122,9 +122,9 @@ func (m *mockAuthStore) GetSessionByTokenHash(ctx context.Context, tokenHash str
 func (m *mockAuthStore) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error {
 	return m.UpdateSessionLastUsedFn(ctx, id)
 }
-func (m *mockAuthStore) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string) error {
+func (m *mockAuthStore) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error {
 	if m.UpdateSessionRefreshTokenHashFn != nil {
-		return m.UpdateSessionRefreshTokenHashFn(ctx, id, newHash)
+		return m.UpdateSessionRefreshTokenHashFn(ctx, id, newHash, expiresAt)
 	}
 	return nil
 }

@@ -29,4 +29,4 @@ WHERE user_id = $1 AND device_id = $2 AND device_id != '' AND revoked_at IS NULL
 UPDATE sessions SET last_used_at = now() WHERE id = $1;
 
 -- name: UpdateSessionRefreshTokenHash :exec
-UPDATE sessions SET refresh_token_hash = $2 WHERE id = $1;
+UPDATE sessions SET refresh_token_hash = $2, expires_at = $3 WHERE id = $1;

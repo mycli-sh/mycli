@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbgen "mycli.sh/api/internal/database/generated"
@@ -557,10 +558,11 @@ func (s *Store) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string) error {
+func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error {
 	if err := s.q.UpdateSessionRefreshTokenHash(ctx, dbgen.UpdateSessionRefreshTokenHashParams{
 		ID:               id,
 		RefreshTokenHash: newHash,
+		ExpiresAt:        pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("update session refresh token hash: %w", err)
 	}

@@ -17,9 +17,11 @@ const (
 )
 
 type Tokens struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
+	AccessToken     string    `json:"access_token"`
+	RefreshToken    string    `json:"refresh_token"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	LoggedInAt      time.Time `json:"logged_in_at,omitempty"`
+	LastRefreshedAt time.Time `json:"last_refreshed_at,omitempty"`
 }
 
 type DeviceCodeResponse struct {

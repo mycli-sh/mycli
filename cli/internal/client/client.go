@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"resty.dev/v3"
@@ -23,7 +25,8 @@ var InstallMethod = "source"
 
 type Client struct {
 	rc         *resty.Client
-	refreshing bool // guards against recursive refresh
+	refreshMu  sync.Mutex  // serializes refresh attempts across goroutines
+	refreshing atomic.Bool // true while a refresh is in flight; prevents middleware re-entry on the refresh request itself
 }
 
 func New(baseURL string) *Client {
@@ -44,8 +47,9 @@ func New(baseURL string) *Client {
 		if tokens, err := auth.LoadTokens(); err == nil && tokens.AccessToken != "" {
 			// Skip refresh for API tokens (myc_ prefix) — they don't expire via JWT
 			if !auth.IsAPIToken(tokens.AccessToken) {
-				// Proactively refresh if token is expired or near-expiry (30s buffer)
-				if !c.refreshing && !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt.Add(-30*time.Second)) {
+				// Proactively refresh if token is expired or near-expiry (30s buffer).
+				// Skip if a refresh is already in flight (e.g., the /v1/auth/refresh request itself).
+				if !c.refreshing.Load() && !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt.Add(-30*time.Second)) {
 					if c.tryRefresh() {
 						tokens, _ = auth.LoadTokens() // reload after refresh
 					}
@@ -72,7 +76,7 @@ func New(baseURL string) *Client {
 			if tokens, loadErr := auth.LoadTokens(); loadErr == nil && auth.IsAPIToken(tokens.AccessToken) {
 				return false
 			}
-			if c.refreshing {
+			if c.refreshing.Load() {
 				return false
 			}
 			if c.tryRefresh() {
@@ -129,24 +133,76 @@ func (c *Client) do(method, path string, reqBody any, out any) error {
 	return nil
 }
 
+// recentRefreshDedup is how recently another goroutine must have refreshed
+// for a queued caller to consider its rotation redundant. Five seconds is long
+// enough to absorb the round-trip of a concurrent refresh but short enough
+// that a server-side rejection (401) still forces a fresh refresh attempt.
+const recentRefreshDedup = 5 * time.Second
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
-// Returns true if the refresh succeeded and tokens were updated.
+// Returns true if the refresh succeeded and tokens were updated. Safe to call
+// concurrently — refresh attempts are serialized; if another caller already
+// refreshed the access token within recentRefreshDedup while this one waited
+// for the lock, it returns true without making a redundant network call.
 func (c *Client) tryRefresh() bool {
-	c.refreshing = true
-	defer func() { c.refreshing = false }()
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
 
 	tokens, err := auth.LoadTokens()
 	if err != nil || tokens.RefreshToken == "" {
 		return false
 	}
 
+	// If another goroutine just rotated the token, the refresh token we hold
+	// is already stale. Treat as success — the caller will reload tokens.
+	if !tokens.LastRefreshedAt.IsZero() && time.Since(tokens.LastRefreshedAt) < recentRefreshDedup {
+		return true
+	}
+
+	c.refreshing.Store(true)
+	defer c.refreshing.Store(false)
+
 	refreshResp, err := c.RefreshToken(tokens.RefreshToken)
 	if err != nil || refreshResp.AccessToken == "" {
 		return false
 	}
 
+	now := time.Now()
 	tokens.AccessToken = refreshResp.AccessToken
-	tokens.ExpiresAt = time.Now().Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	tokens.ExpiresAt = now.Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	tokens.LastRefreshedAt = now
+	if refreshResp.RefreshToken != "" {
+		tokens.RefreshToken = refreshResp.RefreshToken
+	}
+	_ = auth.SaveTokens(tokens)
+	return true
+}
+
+// RefreshNow forces a refresh of the access token using the stored refresh
+// token, bypassing the near-expiry check. Intended for background/periodic
+// refreshes that keep the server-side session alive. Concurrent-safe; returns
+// true on success.
+func (c *Client) RefreshNow() bool {
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+
+	tokens, err := auth.LoadTokens()
+	if err != nil || tokens.RefreshToken == "" {
+		return false
+	}
+
+	c.refreshing.Store(true)
+	defer c.refreshing.Store(false)
+
+	refreshResp, err := c.RefreshToken(tokens.RefreshToken)
+	if err != nil || refreshResp.AccessToken == "" {
+		return false
+	}
+
+	now := time.Now()
+	tokens.AccessToken = refreshResp.AccessToken
+	tokens.ExpiresAt = now.Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	tokens.LastRefreshedAt = now
 	if refreshResp.RefreshToken != "" {
 		tokens.RefreshToken = refreshResp.RefreshToken
 	}
