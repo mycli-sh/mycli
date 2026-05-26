@@ -96,7 +96,6 @@ type ProfileStore interface {
 	ListProfilesByOwner(ctx context.Context, ownerID uuid.UUID) ([]model.Profile, error)
 	UpdateProfile(ctx context.Context, id uuid.UUID, name, description string) (*model.Profile, error)
 	DeleteProfile(ctx context.Context, id uuid.UUID) error
-	SetDefaultProfile(ctx context.Context, ownerID, profileID uuid.UUID) error
 	GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error)
 	AddLibraryToProfile(ctx context.Context, profileID, libraryID uuid.UUID) error
 	RemoveLibraryFromProfile(ctx context.Context, profileID, libraryID uuid.UUID) error

@@ -93,27 +93,6 @@ func (s *Store) DeleteProfile(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Store) SetDefaultProfile(ctx context.Context, ownerID, profileID uuid.UUID) error {
-	return s.withTx(ctx, func(tx *Store) error {
-		// Unset current default
-		if _, err := tx.db.Exec(ctx, `
-			UPDATE profiles SET is_default = false WHERE owner_user_id = $1 AND is_default = true`, ownerID); err != nil {
-			return fmt.Errorf("unset default: %w", err)
-		}
-		// Set new default
-		tag, err := tx.db.Exec(ctx, `
-			UPDATE profiles SET is_default = true, updated_at = now()
-			WHERE id = $1 AND owner_user_id = $2`, profileID, ownerID)
-		if err != nil {
-			return fmt.Errorf("set default: %w", err)
-		}
-		if tag.RowsAffected() == 0 {
-			return ErrNotFound
-		}
-		return nil
-	})
-}
-
 func (s *Store) GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error) {
 	row := s.db.QueryRow(ctx, `
 		SELECT id, owner_user_id, slug, name, description, is_default, created_at, updated_at

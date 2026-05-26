@@ -606,10 +606,6 @@ func (c *Client) DeleteProfile(slug string, force bool) error {
 	return c.do("DELETE", path, nil, nil)
 }
 
-func (c *Client) SetDefaultProfile(slug string) error {
-	return c.do("POST", "/v1/profiles/"+slug+"/default", nil, nil)
-}
-
 func (c *Client) AddLibraryToProfile(profileSlug, library string) error {
 	body := map[string]string{"library": library}
 	return c.do("POST", "/v1/profiles/"+profileSlug+"/libraries", body, nil)

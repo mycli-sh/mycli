@@ -203,28 +203,6 @@ func (h *ProfileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-func (h *ProfileHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r.Context())
-	slug := chi.URLParam(r, "slug")
-
-	profile, err := h.store.GetProfileByOwnerAndSlug(r.Context(), userID, slug)
-	if err != nil {
-		if err == store.ErrNotFound {
-			writeError(w, http.StatusNotFound, "NOT_FOUND", "profile not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get profile")
-		return
-	}
-
-	if err := h.store.SetDefaultProfile(r.Context(), userID, profile.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to set default profile")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
 func (h *ProfileHandler) AddLibrary(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	slug := chi.URLParam(r, "slug")

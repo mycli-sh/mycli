@@ -183,7 +183,6 @@ func main() {
 		r.Get("/v1/profiles/{slug}", profileHandler.Get)
 		r.Patch("/v1/profiles/{slug}", profileHandler.Update)
 		r.Delete("/v1/profiles/{slug}", profileHandler.Delete)
-		r.Post("/v1/profiles/{slug}/default", profileHandler.SetDefault)
 		r.Post("/v1/profiles/{slug}/libraries", profileHandler.AddLibrary)
 		r.Delete("/v1/profiles/{slug}/libraries/{owner}/{libSlug}", profileHandler.RemoveLibrary)
 		r.Get("/v1/profiles/{slug}/libraries", profileHandler.ListLibraries)
