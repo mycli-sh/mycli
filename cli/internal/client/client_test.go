@@ -356,3 +356,95 @@ func TestClient_RetryOn401_RefreshFails_ClearsTokens(t *testing.T) {
 		t.Errorf("expected tokens to be cleared, but access token = %q", tokens.AccessToken)
 	}
 }
+
+// TestClient_RetryOn401_DoesNotClearTokens_WhenConcurrentRefreshSucceeded
+// guards against a cross-client race: a background goroutine on Client B
+// successfully refreshes and writes fresh tokens to disk while Client A is
+// mid-flight on its own /v1/auth/refresh call. The server has already rotated
+// the session, so Client A's refresh request returns 401. Without the
+// LastRefreshedAt re-check, Client A's retry callback would invoke
+// auth.ClearTokens() and wipe the freshly-saved tokens, logging the user out.
+func TestClient_RetryOn401_DoesNotClearTokens_WhenConcurrentRefreshSucceeded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	clearTestTokens()
+
+	refreshArrived := make(chan struct{})
+	releaseRefresh := make(chan struct{})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/auth/refresh":
+			// Signal we've reached the server, then block until the test
+			// simulates the concurrent refresh winning.
+			select {
+			case refreshArrived <- struct{}{}:
+			default: // signal once; subsequent refreshes (if any) just proceed
+			}
+			<-releaseRefresh
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"error": map[string]string{"code": "INVALID_TOKEN", "message": "session not found"},
+			})
+		case "/v1/me":
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"error": map[string]string{"code": "UNAUTHORIZED", "message": "expired"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	// Foreground starts with tokens whose LastRefreshedAt is OLD, so the
+	// pre-flight dedup in tryRefresh does NOT short-circuit.
+	if err := auth.SaveTokens(&auth.Tokens{
+		AccessToken:     "stale-access",
+		RefreshToken:    "stale-refresh",
+		ExpiresAt:       time.Now().Add(1 * time.Hour),
+		LastRefreshedAt: time.Now().Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveTokens (initial): %v", err)
+	}
+
+	c := New(srv.URL)
+	defer c.Close()
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = c.GetMe() // expected to fail; we only care about token state afterward
+		close(done)
+	}()
+
+	// Wait for foreground's /v1/auth/refresh to hit the server. At this point
+	// the foreground has already committed to its (about-to-fail) refresh.
+	select {
+	case <-refreshArrived:
+	case <-time.After(2 * time.Second):
+		t.Fatal("foreground refresh never reached server")
+	}
+
+	// Simulate the concurrent winner: another client (background goroutine)
+	// has just refreshed successfully and persisted fresh tokens.
+	if err := auth.SaveTokens(&auth.Tokens{
+		AccessToken:     "concurrent-winner-access",
+		RefreshToken:    "concurrent-winner-refresh",
+		ExpiresAt:       time.Now().Add(1 * time.Hour),
+		LastRefreshedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("SaveTokens (concurrent winner): %v", err)
+	}
+
+	// Let foreground's refresh request return 401.
+	close(releaseRefresh)
+	<-done
+
+	tokens, err := auth.LoadTokens()
+	if err != nil {
+		t.Fatalf("LoadTokens after race: %v", err)
+	}
+	if tokens.AccessToken != "concurrent-winner-access" {
+		t.Errorf("concurrent winner's tokens were wiped: access=%q (want %q)", tokens.AccessToken, "concurrent-winner-access")
+	}
+	if tokens.RefreshToken != "concurrent-winner-refresh" {
+		t.Errorf("concurrent winner's refresh token was wiped: refresh=%q (want %q)", tokens.RefreshToken, "concurrent-winner-refresh")
+	}
+}

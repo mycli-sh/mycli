@@ -164,6 +164,15 @@ func (c *Client) tryRefresh() bool {
 
 	refreshResp, err := c.RefreshToken(tokens.RefreshToken)
 	if err != nil || refreshResp.AccessToken == "" {
+		// Our refresh failed — but another goroutine on a different client
+		// may have rotated the session out from under us. Re-check disk: if
+		// LastRefreshedAt advanced, treat as success so the caller doesn't
+		// wipe the valid tokens the other goroutine just saved.
+		if fresh, loadErr := auth.LoadTokens(); loadErr == nil && fresh != nil &&
+			!fresh.LastRefreshedAt.IsZero() &&
+			time.Since(fresh.LastRefreshedAt) < recentRefreshDedup {
+			return true
+		}
 		return false
 	}
 
