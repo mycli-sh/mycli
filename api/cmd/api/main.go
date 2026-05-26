@@ -89,7 +89,6 @@ func main() {
 		MaxAge:           300,
 	}))
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 
