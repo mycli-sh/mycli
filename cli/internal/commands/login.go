@@ -83,10 +83,13 @@ func newLoginCmd() *cobra.Command {
 }
 
 func handleLoginSuccess(c *client.Client, tokenResp *auth.TokenResponse) error {
+	now := time.Now()
 	tokens := &auth.Tokens{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+		AccessToken:     tokenResp.AccessToken,
+		RefreshToken:    tokenResp.RefreshToken,
+		ExpiresAt:       now.Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+		LoggedInAt:      now,
+		LastRefreshedAt: now,
 	}
 	if err := auth.SaveTokens(tokens); err != nil {
 		return fmt.Errorf("failed to save tokens: %w", err)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"mycli.sh/cli/internal/auth"
 	"mycli.sh/cli/internal/cache"
 	"mycli.sh/cli/internal/client"
 	"mycli.sh/cli/internal/config"
@@ -32,6 +33,15 @@ func NewRootCmd() *cobra.Command {
 			if termui.IsTTY() {
 				update.CheckInBackground()
 			}
+			auth.MaybeRefreshInBackground(func() bool {
+				cfg, err := config.Load()
+				if err != nil {
+					return false
+				}
+				c := client.New(resolveAPIURL(cfg))
+				defer c.Close()
+				return c.RefreshNow()
+			})
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			if termui.IsTTY() {
