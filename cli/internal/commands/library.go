@@ -41,7 +41,6 @@ func newLibraryCmd() *cobra.Command {
 	cmd.AddCommand(newLibraryReleaseCmd())
 	cmd.AddCommand(newLibraryInfoCmd())
 	cmd.AddCommand(newLibraryExploreCmd())
-	cmd.AddCommand(newLibrarySyncCmd())
 
 	return cmd
 }
@@ -138,15 +137,14 @@ func installRegistryLibrary(identifier string) error {
 		return fmt.Errorf("library %q not found: %w", identifier, err)
 	}
 
-	// Install via API if logged in
+	// Add to the active profile (always non-empty — defaults to "default") and sync.
 	if auth.IsLoggedIn() {
-		if err := c.InstallLibrary(owner, slug); err != nil {
-			return fmt.Errorf("failed to install: %w", err)
+		profile := cfg.GetActiveProfile()
+		if err := c.AddLibraryToProfile(profile, identifier); err != nil {
+			return fmt.Errorf("failed to add to profile %q: %w", profile, err)
 		}
-
-		// Sync so commands appear in catalog
-		fmt.Println("Syncing commands...")
-		fetched, syncErr := cache.Sync(c, false)
+		fmt.Printf("Syncing profile %q...\n", profile)
+		fetched, syncErr := cache.SyncProfile(c, profile, false)
 		if syncErr != nil {
 			fmt.Fprintf(os.Stderr, "warning: sync failed: %v\n", syncErr)
 		} else if fetched > 0 {
@@ -231,13 +229,13 @@ func newLibraryUninstallCmd() *cobra.Command {
 				return fmt.Errorf("%q is a git source; use 'my source remove %s' instead", name, name)
 			}
 
-			// Uninstall from API if logged in
+			// Remove from the active profile on the server (best-effort).
 			if entry.Kind == "registry" && auth.IsLoggedIn() {
 				cfg, err := config.Load()
 				if err == nil {
 					c := client.New(resolveAPIURL(cfg))
 					defer c.Close()
-					_ = c.UninstallLibrary(entry.Owner, entry.Slug)
+					_ = c.RemoveLibraryFromProfile(cfg.GetActiveProfile(), entry.Owner, entry.Slug)
 				}
 			}
 
@@ -264,8 +262,12 @@ func newLibraryListCmd() *cobra.Command {
 				return err
 			}
 
-			// Merge API-installed libraries from the cached catalog
-			catalog, _ := cache.GetCatalog()
+			// Merge API-installed libraries from the active profile's cached catalog
+			cfg, _ := config.Load()
+			var catalog *cache.CachedCatalog
+			if cfg != nil {
+				catalog, _ = cache.GetCatalog(cfg.GetActiveProfile())
+			}
 			if catalog != nil {
 				seen := map[string]bool{}
 				for _, entry := range reg.Sources {
@@ -659,36 +661,6 @@ func newLibraryInfoCmd() *cobra.Command {
 				for _, rel := range releases {
 					fmt.Printf("  %s  %s  (%d commands)\n", rel.Tag, rel.ReleasedAt, rel.CommandCount)
 				}
-			}
-			return nil
-		},
-	}
-}
-
-func newLibrarySyncCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "sync",
-		Short: "Sync registry libraries with the server",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if !auth.IsLoggedIn() {
-				return fmt.Errorf("not logged in (run 'my cli login' first)")
-			}
-			cfg, err := config.Load()
-			if err != nil {
-				return err
-			}
-			c := client.New(resolveAPIURL(cfg))
-			defer c.Close()
-
-			fmt.Println("Syncing...")
-			fetched, err := cache.Sync(c, true)
-			if err != nil {
-				return fmt.Errorf("sync failed: %w", err)
-			}
-			if fetched == 0 {
-				fmt.Println("Already up to date.")
-			} else {
-				fmt.Printf("Synced %d command(s).\n", fetched)
 			}
 			return nil
 		},

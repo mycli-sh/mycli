@@ -18,7 +18,8 @@ type mockMeStore struct {
 	IsUsernameTakenFn       func(ctx context.Context, username string) (bool, error)
 	SetUsernameFn           func(ctx context.Context, userID uuid.UUID, username string) error
 	CountCommandsByOwnerFn  func(ctx context.Context, ownerID uuid.UUID) (int, error)
-	GetInstalledLibrariesFn func(ctx context.Context, userID uuid.UUID) ([]model.Library, error)
+	GetDefaultProfileFn     func(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error)
+	ListProfileLibrariesFn  func(ctx context.Context, profileID uuid.UUID) ([]model.Library, error)
 	ListCommandsByLibraryFn func(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error)
 	GetOwnerNameFn          func(ctx context.Context, ownerID uuid.UUID) (string, error)
 }
@@ -35,8 +36,11 @@ func (m *mockMeStore) SetUsername(ctx context.Context, userID uuid.UUID, usernam
 func (m *mockMeStore) CountCommandsByOwner(ctx context.Context, ownerID uuid.UUID) (int, error) {
 	return m.CountCommandsByOwnerFn(ctx, ownerID)
 }
-func (m *mockMeStore) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error) {
-	return m.GetInstalledLibrariesFn(ctx, userID)
+func (m *mockMeStore) GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error) {
+	return m.GetDefaultProfileFn(ctx, ownerID)
+}
+func (m *mockMeStore) ListProfileLibraries(ctx context.Context, profileID uuid.UUID) ([]model.Library, error) {
+	return m.ListProfileLibrariesFn(ctx, profileID)
 }
 func (m *mockMeStore) ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error) {
 	return m.ListCommandsByLibraryFn(ctx, libraryID)
@@ -264,7 +268,10 @@ func TestMeHandler_CheckUsernameAvailable(t *testing.T) {
 func TestMeHandler_SyncSummary(t *testing.T) {
 	ms := &mockMeStore{}
 	ms.CountCommandsByOwnerFn = func(context.Context, uuid.UUID) (int, error) { return 5, nil }
-	ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
+	ms.GetDefaultProfileFn = func(_ context.Context, ownerID uuid.UUID) (*model.Profile, error) {
+		return &model.Profile{ID: testProfile1, OwnerUserID: ownerID, Slug: "default", IsDefault: true}, nil
+	}
+	ms.ListProfileLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
 		return []model.Library{
 			{ID: testLib1, Slug: "kubernetes", Name: "Kubernetes", OwnerID: &testLibOwner},
 		}, nil

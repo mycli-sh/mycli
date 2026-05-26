@@ -138,7 +138,7 @@ func TestWebAuth_Verify(t *testing.T) {
 				ms.GetUserByEmailFn = func(context.Context, string) (*model.User, error) {
 					return nil, store.ErrNotFound
 				}
-				ms.CreateUserFn = func(_ context.Context, email string) (*model.User, error) {
+				ms.CreateUserWithDefaultProfileFn = func(_ context.Context, email string) (*model.User, error) {
 					return &model.User{ID: testUserNew, Email: email}, nil
 				}
 				ms.CreateSessionFn = func(_ context.Context, userID uuid.UUID, _, _, _, _, _ string, _ time.Time) (*model.Session, error) {

@@ -28,9 +28,11 @@ type CommandStore interface {
 type CatalogStore interface {
 	ListCommandsByOwner(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error)
 	GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error)
-	GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error)
 	GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error)
 	ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]LibraryCommand, error)
+	GetProfileByOwnerAndSlug(ctx context.Context, ownerID uuid.UUID, slug string) (*model.Profile, error)
+	ListProfileLibraries(ctx context.Context, profileID uuid.UUID) ([]model.Library, error)
+	GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error)
 }
 
 // MeStore is the subset of Store used by MeHandler.
@@ -39,7 +41,8 @@ type MeStore interface {
 	IsUsernameTaken(ctx context.Context, username string) (bool, error)
 	SetUsername(ctx context.Context, userID uuid.UUID, username string) error
 	CountCommandsByOwner(ctx context.Context, ownerID uuid.UUID) (int, error)
-	GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error)
+	GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error)
+	ListProfileLibraries(ctx context.Context, profileID uuid.UUID) ([]model.Library, error)
 	ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]LibraryCommand, error)
 	GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error)
 }
@@ -64,7 +67,7 @@ type AuthStore interface {
 	DeleteExpiredMagicLinks(ctx context.Context) error
 	ConsumeAuthorizedDeviceCode(ctx context.Context, deviceCode string, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
-	CreateUser(ctx context.Context, email string) (*model.User, error)
+	CreateUserWithDefaultProfile(ctx context.Context, email string) (*model.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error)
 	CreateSession(ctx context.Context, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	RevokeSessionByDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) error
@@ -74,7 +77,36 @@ type AuthStore interface {
 	UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string) error
 	CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int, error)
 	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
-	InstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error
+}
+
+// TokenStore is the subset of Store used by TokenHandler.
+type TokenStore interface {
+	CreateAPIToken(ctx context.Context, userID uuid.UUID, name, tokenHash, tokenPrefix string, profileID *uuid.UUID, expiresAt *time.Time) (*model.APIToken, error)
+	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]model.APIToken, error)
+	RevokeAPIToken(ctx context.Context, id, userID uuid.UUID) error
+	GetAPITokenByHash(ctx context.Context, tokenHash string) (*model.APIToken, error)
+	UpdateAPITokenLastUsed(ctx context.Context, id uuid.UUID) error
+	CountAPITokens(ctx context.Context, userID uuid.UUID) (int, error)
+	GetProfileByOwner(ctx context.Context, ownerID, profileID uuid.UUID) (*model.Profile, error)
+}
+
+// ProfileStore is the subset of Store used by ProfileHandler.
+type ProfileStore interface {
+	CreateProfile(ctx context.Context, ownerID uuid.UUID, slug, name, description string) (*model.Profile, error)
+	GetProfileByOwnerAndSlug(ctx context.Context, ownerID uuid.UUID, slug string) (*model.Profile, error)
+	ListProfilesByOwner(ctx context.Context, ownerID uuid.UUID) ([]model.Profile, error)
+	UpdateProfile(ctx context.Context, id uuid.UUID, name, description string) (*model.Profile, error)
+	DeleteProfile(ctx context.Context, id uuid.UUID) error
+	GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error)
+	AddLibraryToProfile(ctx context.Context, profileID, libraryID uuid.UUID) error
+	RemoveLibraryFromProfile(ctx context.Context, profileID, libraryID uuid.UUID) error
+	ListProfileLibraries(ctx context.Context, profileID uuid.UUID) ([]model.Library, error)
+	GetLibraryByOwnerUsernameAndSlug(ctx context.Context, ownerName, slug string) (*model.Library, error)
+	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
+	GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error)
+	ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]LibraryCommand, error)
+	GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error)
+	CountTokensByProfile(ctx context.Context, profileID uuid.UUID) (int, error)
 }
 
 // LibraryStore is the subset of Store used by LibraryHandler.
@@ -98,8 +130,6 @@ type LibraryStore interface {
 	LibraryReleaseExists(ctx context.Context, libraryID uuid.UUID, version string) (bool, error)
 	CreateLibraryRelease(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error)
 	UpdateLibraryLatestVersion(ctx context.Context, libraryID uuid.UUID, version string) error
-	InstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error
-	UninstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error
 	ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]model.LibraryRelease, error)
 	GetLibraryRelease(ctx context.Context, libraryID uuid.UUID, version string) (*model.LibraryRelease, error)
 	WithTx(ctx context.Context, fn func(LibraryStore) error) error

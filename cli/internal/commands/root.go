@@ -70,7 +70,12 @@ func registerAPILibraryCommands(root *cobra.Command) (map[string]map[string]bool
 	registered := make(map[string]map[string]bool)
 	registeredAliases := make(map[string]bool)
 
-	catalog, err := cache.GetCatalog()
+	cfg, _ := config.Load()
+	profile := config.DefaultProfileSlug
+	if cfg != nil {
+		profile = cfg.GetActiveProfile()
+	}
+	catalog, err := cache.GetCatalog(profile)
 	if err != nil || catalog == nil {
 		return registered, registeredAliases
 	}
@@ -136,7 +141,12 @@ func registerAPILibraryCommands(root *cobra.Command) (map[string]map[string]bool
 				Short:              item.Description,
 				DisableFlagParsing: true,
 				RunE: func(cmd *cobra.Command, args []string) error {
-					s, err := cache.GetLibrarySpec(libKeyCapture, item.Slug)
+					cfg, _ := config.Load()
+					p := config.DefaultProfileSlug
+					if cfg != nil {
+						p = cfg.GetActiveProfile()
+					}
+					s, err := cache.GetLibrarySpec(p, libKeyCapture, item.Slug)
 					if err != nil {
 						return err
 					}
@@ -146,7 +156,7 @@ func registerAPILibraryCommands(root *cobra.Command) (map[string]map[string]bool
 						return nil
 					}
 
-					catItem, _ := cache.GetLibraryCatalogItem(libKeyCapture, item.Slug)
+					catItem, _ := cache.GetLibraryCatalogItem(p, libKeyCapture, item.Slug)
 
 					result, execErr := engine.Execute(s, args, engine.ExecOpts{})
 

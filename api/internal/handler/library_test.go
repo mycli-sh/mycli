@@ -37,8 +37,6 @@ type mockLibraryStore struct {
 	LibraryReleaseExistsFn             func(ctx context.Context, libraryID uuid.UUID, version string) (bool, error)
 	CreateLibraryReleaseFn             func(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error)
 	UpdateLibraryLatestVersionFn       func(ctx context.Context, libraryID uuid.UUID, version string) error
-	InstallLibraryFn                   func(ctx context.Context, userID, libraryID uuid.UUID) error
-	UninstallLibraryFn                 func(ctx context.Context, userID, libraryID uuid.UUID) error
 	ListLibraryReleasesFn              func(ctx context.Context, libraryID uuid.UUID) ([]model.LibraryRelease, error)
 	GetLibraryReleaseFn                func(ctx context.Context, libraryID uuid.UUID, version string) (*model.LibraryRelease, error)
 }
@@ -114,12 +112,6 @@ func (m *mockLibraryStore) CreateLibraryRelease(ctx context.Context, libraryID u
 }
 func (m *mockLibraryStore) UpdateLibraryLatestVersion(ctx context.Context, libraryID uuid.UUID, version string) error {
 	return m.UpdateLibraryLatestVersionFn(ctx, libraryID, version)
-}
-func (m *mockLibraryStore) InstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
-	return m.InstallLibraryFn(ctx, userID, libraryID)
-}
-func (m *mockLibraryStore) UninstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
-	return m.UninstallLibraryFn(ctx, userID, libraryID)
 }
 func (m *mockLibraryStore) ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]model.LibraryRelease, error) {
 	return m.ListLibraryReleasesFn(ctx, libraryID)
@@ -287,92 +279,6 @@ func TestLibraryHandler_GetDetail(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestLibraryHandler_Install(t *testing.T) {
-	tests := []struct {
-		name        string
-		owner       string
-		slug        string
-		setupStore  func(*mockLibraryStore)
-		wantCode    int
-		wantErrCode string
-	}{
-		{
-			name:  "success",
-			owner: "alice",
-			slug:  "kubernetes",
-			setupStore: func(ms *mockLibraryStore) {
-				ms.GetLibraryByOwnerUsernameAndSlugFn = func(context.Context, string, string) (*model.Library, error) {
-					return &model.Library{ID: testLib1}, nil
-				}
-				ms.InstallLibraryFn = func(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-			},
-			wantCode: http.StatusOK,
-		},
-		{
-			name:  "library not found",
-			owner: "nobody",
-			slug:  "nonexistent",
-			setupStore: func(ms *mockLibraryStore) {
-				ms.GetLibraryByOwnerUsernameAndSlugFn = func(context.Context, string, string) (*model.Library, error) {
-					return nil, store.ErrNotFound
-				}
-				ms.GetLibraryBySlugFn = func(context.Context, string) (*model.Library, error) {
-					return nil, store.ErrNotFound
-				}
-			},
-			wantCode:    http.StatusNotFound,
-			wantErrCode: "NOT_FOUND",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ms := &mockLibraryStore{}
-			tt.setupStore(ms)
-			h := NewLibraryHandler(&config.Config{}, ms)
-
-			r := chi.NewRouter()
-			r.Post("/libraries/{owner}/{slug}/install", h.Install)
-
-			req := requestWithUser("POST", "/libraries/"+tt.owner+"/"+tt.slug+"/install", nil, testUser1)
-			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
-
-			if rec.Code != tt.wantCode {
-				t.Errorf("got status %d, want %d (body=%s)", rec.Code, tt.wantCode, rec.Body.String())
-			}
-			if tt.wantErrCode != "" {
-				var resp errorResponse
-				decodeJSON(t, rec, &resp)
-				if resp.Error.Code != tt.wantErrCode {
-					t.Errorf("got error code %q, want %q", resp.Error.Code, tt.wantErrCode)
-				}
-			}
-		})
-	}
-}
-
-func TestLibraryHandler_Uninstall(t *testing.T) {
-	ms := &mockLibraryStore{
-		GetLibraryByOwnerUsernameAndSlugFn: func(context.Context, string, string) (*model.Library, error) {
-			return &model.Library{ID: testLib1}, nil
-		},
-		UninstallLibraryFn: func(context.Context, uuid.UUID, uuid.UUID) error { return nil },
-	}
-	h := NewLibraryHandler(&config.Config{}, ms)
-
-	r := chi.NewRouter()
-	r.Delete("/libraries/{owner}/{slug}/install", h.Uninstall)
-
-	req := requestWithUser("DELETE", "/libraries/alice/kubernetes/install", nil, testUser1)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("got status %d, want 204 (body=%s)", rec.Code, rec.Body.String())
 	}
 }
 

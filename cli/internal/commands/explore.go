@@ -263,13 +263,14 @@ func installLibraryCmd(c *client.Client, owner, slug string) tea.Cmd {
 			return installResultMsg{name: slug, err: fmt.Errorf("library not found: %w", err)}
 		}
 
-		// Install via API if logged in
+		// Add to the active profile on the server (always non-empty) and sync.
 		if auth.IsLoggedIn() {
-			if err := c.InstallLibrary(owner, slug); err != nil {
+			cfg, _ := config.Load()
+			profile := cfg.GetActiveProfile()
+			if err := c.AddLibraryToProfile(profile, owner+"/"+slug); err != nil {
 				return installResultMsg{name: slug, err: fmt.Errorf("API install failed: %w", err)}
 			}
-			// Sync
-			_, _ = cache.Sync(c, false)
+			_, _ = cache.SyncProfile(c, profile, false)
 		}
 
 		// Register locally
@@ -781,7 +782,7 @@ func (m exploreModel) renderListHelpBar() string {
 
 	var right string
 	if m.listLoading {
-		right = searchSpinnerStyle.Render(spinnerFrames[m.spinnerFrame]+" searching...")
+		right = searchSpinnerStyle.Render(spinnerFrames[m.spinnerFrame] + " searching...")
 	} else if len(m.libraries) > 0 {
 		right = positionStyle.Render(fmt.Sprintf("%d of %d", m.cursor+1, m.totalResults))
 	}

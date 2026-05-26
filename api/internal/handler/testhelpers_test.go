@@ -30,6 +30,7 @@ var (
 	testML1        = uuid.MustParse("00000000-0000-4000-8000-000000000030")
 	testCV1        = uuid.MustParse("00000000-0000-4000-8000-000000000040")
 	testLib1       = uuid.MustParse("00000000-0000-4000-8000-000000000050")
+	testProfile1   = uuid.MustParse("00000000-0000-4000-8000-000000000060")
 	testDeviceUUID = "11111111-1111-4111-8111-111111111111"
 )
 

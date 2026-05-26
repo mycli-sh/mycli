@@ -69,37 +69,61 @@ func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {
 		cursor = nextCursor
 	}
 
-	// Fetch installed library commands
-	installedLibs, err := h.store.GetInstalledLibraries(r.Context(), userID)
-	if err == nil {
-		for _, lib := range installedLibs {
-			ownerName := ""
-			if lib.OwnerID != nil {
-				ownerName, _ = h.store.GetOwnerName(r.Context(), *lib.OwnerID)
-			}
+	// Resolve which profile's libraries to include.
+	// Every user has a default profile (created in migration / at signup),
+	// so this resolution always yields a non-nil ID.
+	profileSlug := r.URL.Query().Get("profile")
+	tokenProfileID := middleware.GetProfileID(r.Context())
 
-			libCmds, err := h.store.ListCommandsByLibrary(r.Context(), lib.ID)
+	var profileID uuid.UUID
+	switch {
+	case profileSlug != "":
+		profile, err := h.store.GetProfileByOwnerAndSlug(r.Context(), userID, profileSlug)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "profile not found")
+			return
+		}
+		profileID = profile.ID
+	case tokenProfileID != uuid.Nil:
+		profileID = tokenProfileID
+	default:
+		profile, err := h.store.GetDefaultProfile(r.Context(), userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "default profile missing for user")
+			return
+		}
+		profileID = profile.ID
+	}
+
+	libs, _ := h.store.ListProfileLibraries(r.Context(), profileID)
+
+	for _, lib := range libs {
+		ownerName := ""
+		if lib.OwnerID != nil {
+			ownerName, _ = h.store.GetOwnerName(r.Context(), *lib.OwnerID)
+		}
+
+		libCmds, err := h.store.ListCommandsByLibrary(r.Context(), lib.ID)
+		if err != nil {
+			continue
+		}
+		for _, lc := range libCmds {
+			latest, err := h.store.GetLatestVersionByCommand(r.Context(), lc.CommandID)
 			if err != nil {
 				continue
 			}
-			for _, lc := range libCmds {
-				latest, err := h.store.GetLatestVersionByCommand(r.Context(), lc.CommandID)
-				if err != nil {
-					continue
-				}
-				items = append(items, catalogItem{
-					CommandID:      lc.CommandID,
-					Slug:           lc.Slug,
-					Name:           lc.Name,
-					Description:    lc.Description,
-					Version:        latest.Version,
-					SpecHash:       latest.SpecHash,
-					UpdatedAt:      lc.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-					Library:        lib.Slug,
-					LibraryOwner:   ownerName,
-					LibraryAliases: lib.Aliases,
-				})
-			}
+			items = append(items, catalogItem{
+				CommandID:      lc.CommandID,
+				Slug:           lc.Slug,
+				Name:           lc.Name,
+				Description:    lc.Description,
+				Version:        latest.Version,
+				SpecHash:       latest.SpecHash,
+				UpdatedAt:      lc.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+				Library:        lib.Slug,
+				LibraryOwner:   ownerName,
+				LibraryAliases: lib.Aliases,
+			})
 		}
 	}
 

@@ -154,9 +154,14 @@ func (h *MeHandler) SyncSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	installedLibs, err := h.store.GetInstalledLibraries(ctx, userID)
+	defaultProfile, err := h.store.GetDefaultProfile(ctx, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get installed libraries")
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get default profile")
+		return
+	}
+	installedLibs, err := h.store.ListProfileLibraries(ctx, defaultProfile.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list profile libraries")
 		return
 	}
 

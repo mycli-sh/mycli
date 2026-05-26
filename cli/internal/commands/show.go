@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"mycli.sh/cli/internal/cache"
+	"mycli.sh/cli/internal/config"
 	"mycli.sh/cli/internal/library"
 	"mycli.sh/pkg/spec"
 )
@@ -90,12 +91,18 @@ func newShowCmd() *cobra.Command {
 // 1. If the argument contains "/", treat it as library/slug and try API library cache then git libraries.
 // 2. Otherwise, try the API top-level cache then search all git libraries.
 func resolveSpec(arg string) (*spec.CommandSpec, error) {
+	cfg, _ := config.Load()
+	profile := config.DefaultProfileSlug
+	if cfg != nil {
+		profile = cfg.GetActiveProfile()
+	}
+
 	if strings.Contains(arg, "/") {
 		parts := strings.SplitN(arg, "/", 2)
 		libName, cmdSlug := parts[0], parts[1]
 
 		// Try API library cache
-		if s, err := cache.GetLibrarySpec(libName, cmdSlug); err == nil {
+		if s, err := cache.GetLibrarySpec(profile, libName, cmdSlug); err == nil {
 			return s, nil
 		}
 
@@ -104,7 +111,7 @@ func resolveSpec(arg string) (*spec.CommandSpec, error) {
 	}
 
 	// Try API top-level cache
-	if s, err := cache.GetSpec(arg); err == nil {
+	if s, err := cache.GetSpec(profile, arg); err == nil {
 		return s, nil
 	}
 

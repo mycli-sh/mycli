@@ -22,7 +22,7 @@ import (
 // Store defines the subset of store operations needed by the auth service.
 type Store interface {
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
-	CreateUser(ctx context.Context, email string) (*model.User, error)
+	CreateUserWithDefaultProfile(ctx context.Context, email string) (*model.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error)
 	CreateSession(ctx context.Context, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	RevokeSessionByDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) error
@@ -55,12 +55,12 @@ type TokenResult struct {
 }
 
 // FindOrCreateUser looks up a user by email. If the user does not exist, it
-// creates one.
+// creates one with a default profile in a single transaction.
 func (s *Service) FindOrCreateUser(ctx context.Context, email string) (*model.User, error) {
 	user, err := s.store.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return s.store.CreateUser(ctx, email)
+			return s.store.CreateUserWithDefaultProfile(ctx, email)
 		}
 		return nil, err
 	}

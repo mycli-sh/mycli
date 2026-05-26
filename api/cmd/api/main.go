@@ -69,6 +69,8 @@ func main() {
 	meHandler := handler.NewMeHandler(s)
 	libraryHandler := handler.NewLibraryHandler(cfg, s)
 	sessionHandler := handler.NewSessionHandler(s)
+	tokenHandler := handler.NewTokenHandler(s)
+	profileHandler := handler.NewProfileHandler(s)
 
 	// Rate limiters
 	authLimiter := middleware.NewRateLimiter(1, 10) // 1 req/sec, burst 10 for auth
@@ -93,6 +95,7 @@ func main() {
 
 	// Public routes (no auth)
 	r.Group(func(r chi.Router) {
+		r.Use(middleware.BodyLimit(middleware.DefaultBodyLimitBytes))
 		r.Use(middleware.RateLimit(authLimiter, middleware.IPKey))
 
 		// Device flow
@@ -115,7 +118,7 @@ func main() {
 
 	// Library browsing routes (optional auth — works for anonymous + authenticated)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.OptionalAuth(cfg.JWTSecret))
+		r.Use(middleware.OptionalAuth(cfg.JWTSecret, s))
 		r.Use(middleware.RateLimit(apiLimiter, middleware.IPKey))
 
 		r.Get("/v1/libraries", libraryHandler.Search)
@@ -126,9 +129,10 @@ func main() {
 		r.Get("/v1/libraries/{owner}/{slug}/commands/{commandSlug}/versions", libraryHandler.ListCommandVersions)
 	})
 
-	// Authenticated routes (no username required)
+	// Authenticated routes (no username required) — JWT only for token management
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWTSecret))
+		r.Use(middleware.BodyLimit(middleware.DefaultBodyLimitBytes))
+		r.Use(middleware.Auth(cfg.JWTSecret, s))
 		r.Use(middleware.RateLimit(apiLimiter, middleware.UserKey))
 
 		// Auth
@@ -142,11 +146,20 @@ func main() {
 		r.Get("/v1/sessions", sessionHandler.List)
 		r.Delete("/v1/sessions/{id}", sessionHandler.Revoke)
 		r.Delete("/v1/sessions", sessionHandler.RevokeAll)
+
+		// API Tokens (JWT-only: tokens can't manage tokens)
+		r.Route("/v1/tokens", func(r chi.Router) {
+			r.Use(middleware.RequireJWT())
+			r.Post("/", tokenHandler.Create)
+			r.Get("/", tokenHandler.List)
+			r.Delete("/{id}", tokenHandler.Revoke)
+		})
 	})
 
-	// Authenticated routes (username required)
+	// Authenticated routes (username required) — supports both JWT and API tokens
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWTSecret))
+		r.Use(middleware.BodyLimit(middleware.DefaultBodyLimitBytes))
+		r.Use(middleware.Auth(cfg.JWTSecret, s))
 		r.Use(middleware.RequireUsername(s))
 		r.Use(middleware.RateLimit(apiLimiter, middleware.UserKey))
 
@@ -164,10 +177,19 @@ func main() {
 		// Catalog
 		r.Get("/v1/catalog", catalogHandler.GetCatalog)
 
-		// Libraries
-		r.Post("/v1/libraries/{slug}/releases", libraryHandler.CreateRelease)
-		r.Post("/v1/libraries/{owner}/{slug}/install", libraryHandler.Install)
-		r.Delete("/v1/libraries/{owner}/{slug}/install", libraryHandler.Uninstall)
+		// Libraries — releases bundle many specs, so allow a larger body.
+		r.With(middleware.BodyLimit(middleware.ReleaseBodyLimitBytes)).
+			Post("/v1/libraries/{slug}/releases", libraryHandler.CreateRelease)
+
+		// Profiles
+		r.Post("/v1/profiles", profileHandler.Create)
+		r.Get("/v1/profiles", profileHandler.List)
+		r.Get("/v1/profiles/{slug}", profileHandler.Get)
+		r.Patch("/v1/profiles/{slug}", profileHandler.Update)
+		r.Delete("/v1/profiles/{slug}", profileHandler.Delete)
+		r.Post("/v1/profiles/{slug}/libraries", profileHandler.AddLibrary)
+		r.Delete("/v1/profiles/{slug}/libraries/{owner}/{libSlug}", profileHandler.RemoveLibrary)
+		r.Get("/v1/profiles/{slug}/libraries", profileHandler.ListLibraries)
 	})
 
 	// Health check

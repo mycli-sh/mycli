@@ -14,12 +14,17 @@ import (
 	"mycli.sh/api/internal/store"
 )
 
+var (
+	testDefaultProfileID = uuid.MustParse("00000000-0000-7000-8000-000000000099")
+)
+
 type mockCatalogStore struct {
 	ListCommandsByOwnerFn       func(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error)
 	GetLatestVersionByCommandFn func(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error)
-	GetInstalledLibrariesFn     func(ctx context.Context, userID uuid.UUID) ([]model.Library, error)
 	GetOwnerNameFn              func(ctx context.Context, ownerID uuid.UUID) (string, error)
 	ListCommandsByLibraryFn     func(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error)
+	ListProfileLibrariesFn      func(ctx context.Context, profileID uuid.UUID) ([]model.Library, error)
+	GetDefaultProfileFn         func(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error)
 }
 
 func (m *mockCatalogStore) ListCommandsByOwner(ctx context.Context, ownerID uuid.UUID, cursor string, limit int, query string) ([]model.Command, string, error) {
@@ -28,14 +33,32 @@ func (m *mockCatalogStore) ListCommandsByOwner(ctx context.Context, ownerID uuid
 func (m *mockCatalogStore) GetLatestVersionByCommand(ctx context.Context, commandID uuid.UUID) (*model.CommandVersion, error) {
 	return m.GetLatestVersionByCommandFn(ctx, commandID)
 }
-func (m *mockCatalogStore) GetInstalledLibraries(ctx context.Context, userID uuid.UUID) ([]model.Library, error) {
-	return m.GetInstalledLibrariesFn(ctx, userID)
-}
 func (m *mockCatalogStore) GetOwnerName(ctx context.Context, ownerID uuid.UUID) (string, error) {
-	return m.GetOwnerNameFn(ctx, ownerID)
+	if m.GetOwnerNameFn != nil {
+		return m.GetOwnerNameFn(ctx, ownerID)
+	}
+	return "", nil
 }
 func (m *mockCatalogStore) ListCommandsByLibrary(ctx context.Context, libraryID uuid.UUID) ([]store.LibraryCommand, error) {
-	return m.ListCommandsByLibraryFn(ctx, libraryID)
+	if m.ListCommandsByLibraryFn != nil {
+		return m.ListCommandsByLibraryFn(ctx, libraryID)
+	}
+	return nil, nil
+}
+func (m *mockCatalogStore) GetProfileByOwnerAndSlug(_ context.Context, _ uuid.UUID, _ string) (*model.Profile, error) {
+	return nil, store.ErrNotFound
+}
+func (m *mockCatalogStore) ListProfileLibraries(_ context.Context, profileID uuid.UUID) ([]model.Library, error) {
+	if m.ListProfileLibrariesFn != nil {
+		return m.ListProfileLibrariesFn(nil, profileID)
+	}
+	return nil, nil
+}
+func (m *mockCatalogStore) GetDefaultProfile(ctx context.Context, ownerID uuid.UUID) (*model.Profile, error) {
+	if m.GetDefaultProfileFn != nil {
+		return m.GetDefaultProfileFn(ctx, ownerID)
+	}
+	return &model.Profile{ID: testDefaultProfileID, Slug: "default", IsDefault: true, OwnerUserID: ownerID}, nil
 }
 
 func TestCatalogHandler_GetCatalog(t *testing.T) {
@@ -61,9 +84,6 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 					}
 					return nil, store.ErrNotFound
 				}
-				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
-					return nil, nil
-				}
 			},
 			wantCode:  http.StatusOK,
 			wantItems: 1,
@@ -74,20 +94,17 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 				ms.ListCommandsByOwnerFn = func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 					return nil, "", nil
 				}
-				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
-					return nil, nil
-				}
 			},
 			wantCode:  http.StatusOK,
 			wantItems: 0,
 		},
 		{
-			name: "includes library commands",
+			name: "includes library commands from the user's default profile",
 			setupStore: func(ms *mockCatalogStore) {
 				ms.ListCommandsByOwnerFn = func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
 					return nil, "", nil
 				}
-				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
+				ms.ListProfileLibrariesFn = func(_ context.Context, _ uuid.UUID) ([]model.Library, error) {
 					return []model.Library{
 						{ID: testLib1, Slug: "kubernetes", OwnerID: &testLibOwner},
 					}, nil
@@ -117,9 +134,6 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 				}
 				ms.GetLatestVersionByCommandFn = func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
 					return nil, store.ErrNotFound
-				}
-				ms.GetInstalledLibrariesFn = func(context.Context, uuid.UUID) ([]model.Library, error) {
-					return nil, nil
 				}
 			},
 			wantCode:  http.StatusOK,
@@ -155,7 +169,6 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 					t.Errorf("got %d items, want %d", len(items), tt.wantItems)
 				}
 
-				// Verify ETag header is set
 				if rec.Header().Get("ETag") == "" {
 					t.Error("expected ETag header")
 				}
@@ -175,16 +188,12 @@ func TestCatalogHandler_GetCatalog_ETag(t *testing.T) {
 		GetLatestVersionByCommandFn: func(context.Context, uuid.UUID) (*model.CommandVersion, error) {
 			return &model.CommandVersion{Version: 1, SpecHash: "hash1"}, nil
 		},
-		GetInstalledLibrariesFn: func(context.Context, uuid.UUID) ([]model.Library, error) {
-			return nil, nil
-		},
 	}
 	h := NewCatalogHandler(ms)
 
 	r := chi.NewRouter()
 	r.Get("/catalog", h.GetCatalog)
 
-	// First request — get the ETag
 	req := requestWithUser("GET", "/catalog", nil, testUser2)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -197,7 +206,6 @@ func TestCatalogHandler_GetCatalog_ETag(t *testing.T) {
 		t.Fatal("expected ETag header")
 	}
 
-	// Second request — with matching ETag
 	req = requestWithUser("GET", "/catalog", nil, testUser2)
 	req.Header.Set("If-None-Match", etag)
 	rec = httptest.NewRecorder()

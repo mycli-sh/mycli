@@ -14,7 +14,10 @@ import (
 	"mycli.sh/pkg/spec"
 )
 
-var validID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var (
+	validID      = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	validProfile = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+)
 
 type CachedCatalog struct {
 	Items    []client.CatalogItem `json:"items"`
@@ -26,22 +29,66 @@ func cacheDir() string {
 	return filepath.Join(config.DefaultDir(), "cache")
 }
 
-func catalogPath() string {
-	return filepath.Join(cacheDir(), "catalog.json")
+func profilesDir() string {
+	return filepath.Join(cacheDir(), "profiles")
+}
+
+func profileCatalogPath(profile string) (string, error) {
+	if !validProfile.MatchString(profile) {
+		return "", fmt.Errorf("invalid profile name: %q", profile)
+	}
+	return filepath.Join(profilesDir(), profile, "catalog.json"), nil
 }
 
 func specDir() string {
 	return filepath.Join(cacheDir(), "specs")
 }
 
-func Sync(c *client.Client, force bool) (int, error) {
-	current, _ := loadCatalog()
+// migrateLegacyCache moves a pre-profile ~/.my/cache/catalog.json into the
+// "default" profile slot. One-shot; subsequent calls are no-ops.
+func migrateLegacyCache() {
+	legacy := filepath.Join(cacheDir(), "catalog.json")
+	if _, err := os.Stat(legacy); err != nil {
+		return
+	}
+	target, err := profileCatalogPath(config.DefaultProfileSlug)
+	if err != nil {
+		return
+	}
+	if _, err := os.Stat(target); err == nil {
+		// New layout already populated — drop the legacy file
+		_ = os.Remove(legacy)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+		return
+	}
+	if err := os.Rename(legacy, target); err != nil {
+		// Best-effort: copy if rename fails across filesystems
+		data, rerr := os.ReadFile(legacy)
+		if rerr != nil {
+			return
+		}
+		if werr := os.WriteFile(target, data, 0600); werr != nil {
+			return
+		}
+		_ = os.Remove(legacy)
+	}
+}
+
+// SyncProfile syncs the catalog scoped to the given profile.
+func SyncProfile(c *client.Client, profile string, force bool) (int, error) {
+	if profile == "" {
+		return 0, fmt.Errorf("profile is required")
+	}
+
+	current, _ := loadCatalog(profile)
 	etag := ""
 	if !force && current != nil {
 		etag = current.ETag
 	}
 
-	resp, err := c.GetCatalog(etag)
+	resp, err := c.GetCatalog(etag, profile)
 	if err != nil {
 		return 0, fmt.Errorf("fetch catalog: %w", err)
 	}
@@ -82,7 +129,7 @@ func Sync(c *client.Client, force bool) (int, error) {
 			ETag:     resp.ETag,
 			SyncedAt: time.Now(),
 		}
-		if err := saveCatalog(cached); err != nil {
+		if err := saveCatalog(profile, cached); err != nil {
 			return 0, fmt.Errorf("save catalog: %w", err)
 		}
 	}
@@ -90,46 +137,46 @@ func Sync(c *client.Client, force bool) (int, error) {
 	return fetched, nil
 }
 
-func GetSpec(slug string) (*spec.CommandSpec, error) {
-	catalog, err := loadCatalog()
+func GetSpec(profile, slug string) (*spec.CommandSpec, error) {
+	catalog, err := loadCatalog(profile)
 	if err != nil {
-		return nil, fmt.Errorf("no cached catalog (run 'my library sync' first): %w", err)
+		return nil, fmt.Errorf("no cached catalog for profile %q (run 'my cli profile sync %s' first): %w", profile, profile, err)
 	}
 
 	for _, item := range catalog.Items {
 		if item.Slug == slug && item.Library == "" {
 			data, err := loadSpecFile(item.CommandID, item.Version)
 			if err != nil {
-				return nil, fmt.Errorf("spec not cached (run 'my library sync'): %w", err)
+				return nil, fmt.Errorf("spec not cached (run 'my cli profile sync %s'): %w", profile, err)
 			}
 			return spec.Parse(data)
 		}
 	}
 
-	return nil, fmt.Errorf("command %q not found in catalog", slug)
+	return nil, fmt.Errorf("command %q not found in profile %q", slug, profile)
 }
 
-func GetLibrarySpec(libraryKey, slug string) (*spec.CommandSpec, error) {
-	catalog, err := loadCatalog()
+func GetLibrarySpec(profile, libraryKey, slug string) (*spec.CommandSpec, error) {
+	catalog, err := loadCatalog(profile)
 	if err != nil {
-		return nil, fmt.Errorf("no cached catalog (run 'my library sync' first): %w", err)
+		return nil, fmt.Errorf("no cached catalog for profile %q (run 'my cli profile sync %s' first): %w", profile, profile, err)
 	}
 
 	for _, item := range catalog.Items {
 		if matchLibraryKey(item, libraryKey) && item.Slug == slug {
 			data, err := loadSpecFile(item.CommandID, item.Version)
 			if err != nil {
-				return nil, fmt.Errorf("spec not cached (run 'my library sync'): %w", err)
+				return nil, fmt.Errorf("spec not cached (run 'my cli profile sync %s'): %w", profile, err)
 			}
 			return spec.Parse(data)
 		}
 	}
 
-	return nil, fmt.Errorf("command %q not found in library %q", slug, libraryKey)
+	return nil, fmt.Errorf("command %q not found in library %q for profile %q", slug, libraryKey, profile)
 }
 
-func GetLibraryCatalogItem(libraryKey, slug string) (*client.CatalogItem, error) {
-	catalog, err := loadCatalog()
+func GetLibraryCatalogItem(profile, libraryKey, slug string) (*client.CatalogItem, error) {
+	catalog, err := loadCatalog(profile)
 	if err != nil {
 		return nil, err
 	}
@@ -154,20 +201,56 @@ func matchLibraryKey(item client.CatalogItem, key string) bool {
 	return item.Library == key
 }
 
-func GetCatalog() (*CachedCatalog, error) {
-	return loadCatalog()
+func GetCatalog(profile string) (*CachedCatalog, error) {
+	return loadCatalog(profile)
 }
 
-func LastSyncTime() time.Time {
-	catalog, err := loadCatalog()
+// HasCachedProfile reports whether a profile's catalog file exists on disk.
+// Used by offline-tolerant commands to decide whether to allow operations
+// without a network round-trip.
+func HasCachedProfile(profile string) bool {
+	path, err := profileCatalogPath(profile)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
+	return err == nil
+}
+
+// ListCachedProfiles returns the slugs of profiles that have a local catalog
+// cached. Used as a fallback when `my cli profile list` is offline.
+func ListCachedProfiles() []string {
+	migrateLegacyCache()
+	entries, err := os.ReadDir(profilesDir())
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !validProfile.MatchString(name) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(profilesDir(), name, "catalog.json")); err == nil {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func LastSyncTime(profile string) time.Time {
+	catalog, err := loadCatalog(profile)
 	if err != nil {
 		return time.Time{}
 	}
 	return catalog.SyncedAt
 }
 
-func GetCatalogItem(slug string) (*client.CatalogItem, error) {
-	catalog, err := loadCatalog()
+func GetCatalogItem(profile, slug string) (*client.CatalogItem, error) {
+	catalog, err := loadCatalog(profile)
 	if err != nil {
 		return nil, err
 	}
@@ -181,8 +264,13 @@ func GetCatalogItem(slug string) (*client.CatalogItem, error) {
 
 // Internal helpers
 
-func loadCatalog() (*CachedCatalog, error) {
-	data, err := os.ReadFile(catalogPath())
+func loadCatalog(profile string) (*CachedCatalog, error) {
+	migrateLegacyCache()
+	path, err := profileCatalogPath(profile)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -193,15 +281,19 @@ func loadCatalog() (*CachedCatalog, error) {
 	return &c, nil
 }
 
-func saveCatalog(c *CachedCatalog) error {
-	if err := os.MkdirAll(cacheDir(), 0700); err != nil {
+func saveCatalog(profile string, c *CachedCatalog) error {
+	path, err := profileCatalogPath(profile)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(catalogPath(), data, 0600)
+	return os.WriteFile(path, data, 0600)
 }
 
 func validateCommandID(commandID string) error {

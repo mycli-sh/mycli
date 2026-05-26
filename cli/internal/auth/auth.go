@@ -51,7 +51,17 @@ func SaveTokens(tokens *Tokens) error {
 	return saveTokensToFile(data)
 }
 
+// IsAPIToken returns true if the token uses the myc_ prefix (API token, not JWT).
+func IsAPIToken(token string) bool {
+	return len(token) >= 4 && token[:4] == "myc_"
+}
+
 func LoadTokens() (*Tokens, error) {
+	// API token env var takes priority (for CI)
+	if token := os.Getenv("MY_API_TOKEN"); token != "" {
+		return &Tokens{AccessToken: token}, nil
+	}
+
 	// Environment variable override (for dev scripts and CI)
 	if token := os.Getenv("MY_ACCESS_TOKEN"); token != "" {
 		return &Tokens{AccessToken: token}, nil
@@ -84,6 +94,9 @@ func ClearTokens() error {
 }
 
 func IsLoggedIn() bool {
+	if os.Getenv("MY_API_TOKEN") != "" {
+		return true
+	}
 	if os.Getenv("MY_ACCESS_TOKEN") != "" {
 		return true
 	}

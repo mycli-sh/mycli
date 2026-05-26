@@ -31,7 +31,7 @@ type mockAuthStore struct {
 	DeleteExpiredMagicLinksFn        func(ctx context.Context) error
 	ConsumeAuthorizedDeviceCodeFn    func(ctx context.Context, deviceCode string, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	GetUserByEmailFn                 func(ctx context.Context, email string) (*model.User, error)
-	CreateUserFn                     func(ctx context.Context, email string) (*model.User, error)
+	CreateUserWithDefaultProfileFn   func(ctx context.Context, email string) (*model.User, error)
 	GetUserByIDFn                    func(ctx context.Context, id uuid.UUID) (*model.User, error)
 	CreateSessionFn                  func(ctx context.Context, userID uuid.UUID, refreshTokenHash, userAgent, ipAddress, deviceID, deviceName string, expiresAt time.Time) (*model.Session, error)
 	RevokeSessionByDeviceIDFn        func(ctx context.Context, userID uuid.UUID, deviceID string) error
@@ -41,7 +41,6 @@ type mockAuthStore struct {
 	UpdateSessionRefreshTokenHashFn  func(ctx context.Context, id uuid.UUID, newHash string) error
 	CountOTPAttemptsByDeviceCodeFn   func(ctx context.Context, deviceCode string) (int, error)
 	GetLibraryBySlugFn               func(ctx context.Context, slug string) (*model.Library, error)
-	InstallLibraryFn                 func(ctx context.Context, userID, libraryID uuid.UUID) error
 }
 
 func (m *mockAuthStore) CreateMagicLink(ctx context.Context, email, tokenHash, deviceCode string, otpHash *string, expiresAt time.Time) (*model.MagicLink, error) {
@@ -96,8 +95,8 @@ func (m *mockAuthStore) ConsumeAuthorizedDeviceCode(ctx context.Context, deviceC
 func (m *mockAuthStore) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	return m.GetUserByEmailFn(ctx, email)
 }
-func (m *mockAuthStore) CreateUser(ctx context.Context, email string) (*model.User, error) {
-	return m.CreateUserFn(ctx, email)
+func (m *mockAuthStore) CreateUserWithDefaultProfile(ctx context.Context, email string) (*model.User, error) {
+	return m.CreateUserWithDefaultProfileFn(ctx, email)
 }
 func (m *mockAuthStore) GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	return m.GetUserByIDFn(ctx, id)
@@ -141,13 +140,6 @@ func (m *mockAuthStore) GetLibraryBySlug(ctx context.Context, slug string) (*mod
 	}
 	return nil, store.ErrNotFound
 }
-func (m *mockAuthStore) InstallLibrary(ctx context.Context, userID, libraryID uuid.UUID) error {
-	if m.InstallLibraryFn != nil {
-		return m.InstallLibraryFn(ctx, userID, libraryID)
-	}
-	return nil
-}
-
 func newTestAuthHandler(ms *mockAuthStore) *AuthHandler {
 	cfg := &config.Config{
 		JWTSecret: "test-secret",
@@ -452,7 +444,7 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 				ms.GetUserByEmailFn = func(context.Context, string) (*model.User, error) {
 					return nil, store.ErrNotFound
 				}
-				ms.CreateUserFn = func(_ context.Context, email string) (*model.User, error) {
+				ms.CreateUserWithDefaultProfileFn = func(_ context.Context, email string) (*model.User, error) {
 					return &model.User{ID: testUserNew, Email: email}, nil
 				}
 				return dc, "654321"
@@ -975,7 +967,7 @@ func TestAuthHandler_VerifyMagicLink(t *testing.T) {
 				}
 				ms.MarkMagicLinkUsedFn = func(context.Context, uuid.UUID) error { return nil }
 				ms.GetUserByEmailFn = func(context.Context, string) (*model.User, error) { return nil, store.ErrNotFound }
-				ms.CreateUserFn = func(context.Context, string) (*model.User, error) { return nil, errors.New("db error") }
+				ms.CreateUserWithDefaultProfileFn = func(context.Context, string) (*model.User, error) { return nil, errors.New("db error") }
 			},
 			wantCode: http.StatusInternalServerError,
 		},

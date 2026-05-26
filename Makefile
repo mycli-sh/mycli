@@ -1,4 +1,4 @@
-.PHONY: build-api build-cli build-web build-site build-docs test lint dev dev-web dev-site dev-docs migrate sqlc-generate dev-reset docker-build-api docker-build-web
+.PHONY: build-api build-cli build-web build-site build-docs test test-integration lint dev dev-web dev-site dev-docs migrate sqlc-generate dev-reset docker-build-api docker-build-web
 
 build-api:
 	go build -o bin/api ./api/cmd/api
@@ -9,6 +9,9 @@ build-cli:
 
 test:
 	go test ./...
+
+test-integration:
+	go test -tags=integration -count=1 -timeout 10m ./test/integration/...
 
 lint:
 	golangci-lint run ./...

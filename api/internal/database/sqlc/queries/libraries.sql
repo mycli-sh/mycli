@@ -29,29 +29,11 @@ DO UPDATE SET name = EXCLUDED.name,
               updated_at = now()
 RETURNING id, owner_id, slug, name, description, git_url, is_public, install_count, latest_version, created_at, updated_at, aliases;
 
--- name: InstallLibrary :exec
-INSERT INTO library_installations (user_id, library_id)
-VALUES ($1, $2)
-ON CONFLICT (user_id, library_id) DO NOTHING;
-
 -- name: IncrementInstallCount :exec
 UPDATE libraries SET install_count = install_count + 1 WHERE id = $1;
 
--- name: UninstallLibrary :execrows
-DELETE FROM library_installations WHERE user_id = $1 AND library_id = $2;
-
 -- name: DecrementInstallCount :exec
 UPDATE libraries SET install_count = GREATEST(install_count - 1, 0) WHERE id = $1;
-
--- name: GetInstalledLibraries :many
-SELECT l.id, l.owner_id, l.slug, l.name, l.description, l.git_url, l.is_public, l.install_count, l.latest_version, l.created_at, l.updated_at, l.aliases
-FROM libraries l
-JOIN library_installations li ON li.library_id = l.id
-WHERE li.user_id = $1
-ORDER BY l.name ASC;
-
--- name: IsLibraryInstalled :one
-SELECT EXISTS(SELECT 1 FROM library_installations WHERE user_id = $1 AND library_id = $2);
 
 -- name: ListCommandsByLibrary :many
 SELECT id, slug, name, description, updated_at
