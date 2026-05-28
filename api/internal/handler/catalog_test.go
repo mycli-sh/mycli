@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -174,6 +175,73 @@ func TestCatalogHandler_GetCatalog(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCatalogHandler_GetCatalog_IncludesPerCommandAliases(t *testing.T) {
+	now := time.Now()
+	specWithAliases := json.RawMessage(`{
+		"schemaVersion": 1,
+		"kind": "command",
+		"metadata": {"name": "Port Forward", "slug": "port-forward", "aliases": ["pf"]},
+		"steps": [{"name": "run", "run": "echo hello"}]
+	}`)
+	specNoAliases := json.RawMessage(`{
+		"schemaVersion": 1,
+		"kind": "command",
+		"metadata": {"name": "Deploy", "slug": "deploy"},
+		"steps": [{"name": "run", "run": "echo hello"}]
+	}`)
+
+	ms := &mockCatalogStore{
+		ListCommandsByOwnerFn: func(context.Context, uuid.UUID, string, int, string) ([]model.Command, string, error) {
+			return []model.Command{
+				{ID: testCmd1, Slug: "port-forward", Name: "Port Forward", UpdatedAt: now},
+				{ID: testCmd2, Slug: "deploy", Name: "Deploy", UpdatedAt: now},
+			}, "", nil
+		},
+		GetLatestVersionByCommandFn: func(_ context.Context, cmdID uuid.UUID) (*model.CommandVersion, error) {
+			switch cmdID {
+			case testCmd1:
+				return &model.CommandVersion{Version: 1, SpecHash: "h1", SpecJSON: specWithAliases}, nil
+			case testCmd2:
+				return &model.CommandVersion{Version: 1, SpecHash: "h2", SpecJSON: specNoAliases}, nil
+			}
+			return nil, store.ErrNotFound
+		},
+	}
+	h := NewCatalogHandler(ms)
+
+	r := chi.NewRouter()
+	r.Get("/catalog", h.GetCatalog)
+	req := requestWithUser("GET", "/catalog", nil, testUser2)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Items []struct {
+			Slug    string   `json:"slug"`
+			Aliases []string `json:"aliases"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	got := make(map[string][]string)
+	for _, it := range resp.Items {
+		got[it.Slug] = it.Aliases
+	}
+
+	if len(got["port-forward"]) != 1 || got["port-forward"][0] != "pf" {
+		t.Errorf("port-forward aliases = %v, want [pf]", got["port-forward"])
+	}
+	if len(got["deploy"]) != 0 {
+		t.Errorf("deploy aliases = %v, want empty/omitted", got["deploy"])
 	}
 }
 

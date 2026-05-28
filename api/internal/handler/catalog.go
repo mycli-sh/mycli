@@ -10,6 +10,7 @@ import (
 
 	"mycli.sh/api/internal/middleware"
 	"mycli.sh/api/internal/store"
+	"mycli.sh/pkg/spec"
 )
 
 type CatalogHandler struct {
@@ -28,9 +29,21 @@ type catalogItem struct {
 	Version        int       `json:"version"`
 	SpecHash       string    `json:"spec_hash"`
 	UpdatedAt      string    `json:"updated_at"`
+	Aliases        []string  `json:"aliases,omitempty"`
 	Library        string    `json:"library,omitempty"`
 	LibraryOwner   string    `json:"library_owner,omitempty"`
 	LibraryAliases []string  `json:"library_aliases,omitempty"`
+}
+
+// aliasesFromSpec parses a stored spec_json and returns metadata.aliases.
+// Returns nil on parse error so callers don't need to handle it — a malformed
+// spec just yields no aliases, never breaks the catalog response.
+func aliasesFromSpec(specJSON []byte) []string {
+	parsed, err := spec.Parse(specJSON)
+	if err != nil {
+		return nil
+	}
+	return parsed.Metadata.Aliases
 }
 
 func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +73,7 @@ func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {
 				Version:     latest.Version,
 				SpecHash:    latest.SpecHash,
 				UpdatedAt:   cmd.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+				Aliases:     aliasesFromSpec(latest.SpecJSON),
 			})
 		}
 
@@ -120,6 +134,7 @@ func (h *CatalogHandler) GetCatalog(w http.ResponseWriter, r *http.Request) {
 				Version:        latest.Version,
 				SpecHash:       latest.SpecHash,
 				UpdatedAt:      lc.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+				Aliases:        aliasesFromSpec(latest.SpecJSON),
 				Library:        lib.Slug,
 				LibraryOwner:   ownerName,
 				LibraryAliases: lib.Aliases,
