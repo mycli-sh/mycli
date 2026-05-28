@@ -645,3 +645,111 @@ steps:
 		t.Fatal("expected error for empty run string in YAML")
 	}
 }
+
+// --- Argument validation constraint tests ---
+
+func ptrInt(i int) *int    { return &i }
+func ptrBool(b bool) *bool { return &b }
+
+func argSpecJSON(args string) string {
+	return `{"schemaVersion":1,"kind":"command","metadata":{"name":"x","slug":"x"},"args":` +
+		args + `,"steps":[{"name":"s","run":"echo"}]}`
+}
+
+func TestSchemaAcceptsArgConstraints(t *testing.T) {
+	args := `{"positional":[{"name":"mode","enum":["a","b"]}],` +
+		`"flags":[{"name":"env","type":"string","enum":["staging","prod"],"default":"prod","minLength":1,"maxLength":10},` +
+		`{"name":"port","type":"int","min":1,"max":65535,"default":8080}]}`
+	if _, err := Parse([]byte(argSpecJSON(args))); err != nil {
+		t.Fatalf("expected valid spec to parse, got: %v", err)
+	}
+}
+
+func TestValidateArgConstraintsRejects(t *testing.T) {
+	tests := []struct {
+		name string
+		args string
+	}{
+		{"bad flag pattern", `{"flags":[{"name":"f","pattern":"["}]}`},
+		{"bad positional pattern", `{"positional":[{"name":"p","pattern":"["}]}`},
+		{"min on string flag", `{"flags":[{"name":"f","type":"string","min":1}]}`},
+		{"pattern on int flag", `{"flags":[{"name":"f","type":"int","pattern":"^x$"}]}`},
+		{"enum on bool flag", `{"flags":[{"name":"f","type":"bool","enum":["a"]}]}`},
+		{"int min>max", `{"flags":[{"name":"f","type":"int","min":5,"max":1}]}`},
+		{"minLength>maxLength", `{"flags":[{"name":"f","minLength":5,"maxLength":1}]}`},
+		{"flag default violates enum", `{"flags":[{"name":"f","enum":["a","b"],"default":"c"}]}`},
+		{"flag default out of range", `{"flags":[{"name":"f","type":"int","min":1,"max":10,"default":50}]}`},
+		{"positional default violates enum", `{"positional":[{"name":"p","enum":["a"],"default":"z"}]}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := Validate([]byte(argSpecJSON(tc.args))); err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+		})
+	}
+}
+
+func TestValidateArgValues(t *testing.T) {
+	enumFlag := &CommandSpec{Args: Args{Flags: []FlagArg{{Name: "env", Enum: []string{"staging", "prod"}}}}}
+	reqEnumFlag := &CommandSpec{Args: Args{Flags: []FlagArg{{Name: "env", Required: ptrBool(true), Enum: []string{"staging", "prod"}}}}}
+	patternFlag := &CommandSpec{Args: Args{Flags: []FlagArg{{Name: "name", Pattern: "^[a-z]+$"}}}}
+	lenFlag := &CommandSpec{Args: Args{Flags: []FlagArg{{Name: "name", MinLength: ptrInt(3), MaxLength: ptrInt(5)}}}}
+	intFlag := &CommandSpec{Args: Args{Flags: []FlagArg{{Name: "port", Type: "int", Min: ptrInt(1), Max: ptrInt(65535)}}}}
+	enumPos := &CommandSpec{Args: Args{Positional: []PositionalArg{{Name: "mode", Enum: []string{"fast", "slow"}}}}}
+	optEnumPos := &CommandSpec{Args: Args{Positional: []PositionalArg{{Name: "mode", Required: ptrBool(false), Enum: []string{"fast"}}}}}
+
+	tests := []struct {
+		name    string
+		spec    *CommandSpec
+		values  map[string]any
+		wantErr bool
+	}{
+		{"enum ok", enumFlag, map[string]any{"env": "prod"}, false},
+		{"enum miss", enumFlag, map[string]any{"env": "dev"}, true},
+		{"enum optional unset skipped", enumFlag, map[string]any{"env": ""}, false},
+		{"enum required empty fails", reqEnumFlag, map[string]any{"env": ""}, true},
+		{"pattern match", patternFlag, map[string]any{"name": "abc"}, false},
+		{"pattern no match", patternFlag, map[string]any{"name": "Abc1"}, true},
+		{"length ok", lenFlag, map[string]any{"name": "abcd"}, false},
+		{"length too short", lenFlag, map[string]any{"name": "ab"}, true},
+		{"length too long", lenFlag, map[string]any{"name": "abcdef"}, true},
+		{"int ok", intFlag, map[string]any{"port": "8080"}, false},
+		{"int not integer", intFlag, map[string]any{"port": "abc"}, true},
+		{"int below min", intFlag, map[string]any{"port": "0"}, true},
+		{"int above max", intFlag, map[string]any{"port": "70000"}, true},
+		{"positional enum ok", enumPos, map[string]any{"mode": "fast"}, false},
+		{"positional enum miss", enumPos, map[string]any{"mode": "x"}, true},
+		{"positional optional unset skipped", optEnumPos, map[string]any{"mode": ""}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateArgValues(tc.spec, tc.values)
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for %s: %v", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestDefaultToString(t *testing.T) {
+	tests := []struct {
+		in   any
+		want string
+	}{
+		{float64(8080), "8080"},
+		{float64(1000000), "1000000"},
+		{float64(3.5), "3.5"},
+		{"prod", "prod"},
+		{true, "true"},
+		{nil, ""},
+	}
+	for _, tc := range tests {
+		if got := DefaultToString(tc.in); got != tc.want {
+			t.Errorf("DefaultToString(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

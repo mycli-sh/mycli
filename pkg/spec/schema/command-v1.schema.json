@@ -109,6 +109,24 @@
               },
               "default": {
                 "type": "string"
+              },
+              "enum": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "pattern": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minLength": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxLength": {
+                "type": "integer",
+                "minimum": 0
               }
             }
           }
@@ -140,6 +158,30 @@
               "required": {
                 "type": "boolean",
                 "default": false
+              },
+              "enum": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "pattern": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minLength": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxLength": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "min": {
+                "type": "integer"
+              },
+              "max": {
+                "type": "integer"
               }
             }
           }

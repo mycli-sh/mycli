@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -141,6 +142,74 @@ func validateSemantics(s *CommandSpec) error {
 			return fmt.Errorf("duplicate alias: %q", alias)
 		}
 		aliasSet[alias] = true
+	}
+
+	// Check that arg validation constraints are well-formed and applicable.
+	if err := validateArgConstraints(s); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateArgConstraints verifies that validation constraints declared on args
+// are well-formed (regex compiles, bounds ordered), applicable to the arg's
+// type, and that any default value satisfies its own constraints. These are
+// authoring errors, caught when a spec is parsed/pushed.
+func validateArgConstraints(s *CommandSpec) error {
+	for _, p := range s.Args.Positional {
+		if p.Pattern != "" {
+			if _, err := regexp.Compile(p.Pattern); err != nil {
+				return fmt.Errorf("argument %q has an invalid pattern: %w", p.Name, err)
+			}
+		}
+		if p.MinLength != nil && p.MaxLength != nil && *p.MinLength > *p.MaxLength {
+			return fmt.Errorf("argument %q: minLength (%d) cannot exceed maxLength (%d)", p.Name, *p.MinLength, *p.MaxLength)
+		}
+		if p.Default != "" {
+			if err := validatePositionalValue(p, p.Default); err != nil {
+				return fmt.Errorf("default for %w", err)
+			}
+		}
+	}
+
+	for _, f := range s.Args.Flags {
+		hasStringConstraints := len(f.Enum) > 0 || f.Pattern != "" || f.MinLength != nil || f.MaxLength != nil
+		hasIntConstraints := f.Min != nil || f.Max != nil
+
+		switch f.GetType() {
+		case "bool":
+			if hasStringConstraints || hasIntConstraints {
+				return fmt.Errorf("flag %q is bool and cannot have validation constraints", f.Name)
+			}
+		case "int":
+			if hasStringConstraints {
+				return fmt.Errorf("flag %q is int: use min/max, not enum/pattern/minLength/maxLength", f.Name)
+			}
+			if f.Min != nil && f.Max != nil && *f.Min > *f.Max {
+				return fmt.Errorf("flag %q: min (%d) cannot exceed max (%d)", f.Name, *f.Min, *f.Max)
+			}
+		default: // string
+			if hasIntConstraints {
+				return fmt.Errorf("flag %q is string: use minLength/maxLength, not min/max", f.Name)
+			}
+			if f.Pattern != "" {
+				if _, err := regexp.Compile(f.Pattern); err != nil {
+					return fmt.Errorf("flag %q has an invalid pattern: %w", f.Name, err)
+				}
+			}
+			if f.MinLength != nil && f.MaxLength != nil && *f.MinLength > *f.MaxLength {
+				return fmt.Errorf("flag %q: minLength (%d) cannot exceed maxLength (%d)", f.Name, *f.MinLength, *f.MaxLength)
+			}
+		}
+
+		if f.GetType() != "bool" && f.Default != nil {
+			if def := DefaultToString(f.Default); def != "" {
+				if err := validateFlagValue(f, def); err != nil {
+					return fmt.Errorf("default for %w", err)
+				}
+			}
+		}
 	}
 
 	return nil
