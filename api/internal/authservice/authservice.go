@@ -31,6 +31,8 @@ type Store interface {
 const (
 	AccessTokenDuration  = 15 * time.Minute
 	RefreshTokenDuration = 60 * 24 * time.Hour
+	AccessTokenTTL       = int(AccessTokenDuration / time.Second)  // seconds, for JSON expires_in
+	RefreshTokenTTL      = int(RefreshTokenDuration / time.Second) // seconds, for JSON refresh_expires_in
 )
 
 // Service centralises auth business logic shared across handlers.
