@@ -44,6 +44,11 @@ func Execute(s *spec.CommandSpec, args []string, opts ExecOpts) (*ExecResult, er
 		return nil, fmt.Errorf("argument error: %w", err)
 	}
 
+	// Validate resolved arg values against declared constraints
+	if err := spec.ValidateArgValues(s, data.Args); err != nil {
+		return nil, fmt.Errorf("argument error: %w", err)
+	}
+
 	// Check dependencies before proceeding
 	if err := checkDependencies(s.Dependencies); err != nil {
 		return nil, err
@@ -293,7 +298,7 @@ func parseArgs(s *spec.CommandSpec, rawArgs []string) (templateData, error) {
 		if v, ok := flagValues[flag.Name]; ok {
 			data.Args[flag.Name] = v
 		} else if flag.Default != nil {
-			data.Args[flag.Name] = fmt.Sprintf("%v", flag.Default)
+			data.Args[flag.Name] = spec.DefaultToString(flag.Default)
 		} else if flag.IsRequired() {
 			return data, fmt.Errorf("missing required flag: --%s", flag.Name)
 		} else {

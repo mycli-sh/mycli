@@ -46,10 +46,14 @@ type Args struct {
 }
 
 type PositionalArg struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Required    *bool  `json:"required,omitempty"`
-	Default     string `json:"default,omitempty"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Required    *bool    `json:"required,omitempty"`
+	Default     string   `json:"default,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+	Pattern     string   `json:"pattern,omitempty"`
+	MinLength   *int     `json:"minLength,omitempty"`
+	MaxLength   *int     `json:"maxLength,omitempty"`
 }
 
 func (p PositionalArg) IsRequired() bool {
@@ -60,12 +64,18 @@ func (p PositionalArg) IsRequired() bool {
 }
 
 type FlagArg struct {
-	Name        string `json:"name"`
-	Short       string `json:"short,omitempty"`
-	Description string `json:"description,omitempty"`
-	Type        string `json:"type,omitempty"`
-	Default     any    `json:"default,omitempty"`
-	Required    *bool  `json:"required,omitempty"`
+	Name        string   `json:"name"`
+	Short       string   `json:"short,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Default     any      `json:"default,omitempty"`
+	Required    *bool    `json:"required,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+	Pattern     string   `json:"pattern,omitempty"`
+	MinLength   *int     `json:"minLength,omitempty"`
+	MaxLength   *int     `json:"maxLength,omitempty"`
+	Min         *int     `json:"min,omitempty"`
+	Max         *int     `json:"max,omitempty"`
 }
 
 func (f FlagArg) IsRequired() bool {
