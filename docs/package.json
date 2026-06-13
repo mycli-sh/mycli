@@ -11,6 +11,6 @@
     "@astrojs/starlight": "^0.39.0",
     "astro": "^6.0.0",
     "posthog-js": "^1.357.1",
-    "sharp": "^0.34.0"
+    "sharp": "^0.35.0"
   }
 }
