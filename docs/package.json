@@ -8,8 +8,8 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.39.0",
-    "astro": "^6.0.0",
+    "@astrojs/starlight": "^0.41.0",
+    "astro": "^7.0.0",
     "posthog-js": "^1.357.1",
     "sharp": "^0.35.0"
   }
