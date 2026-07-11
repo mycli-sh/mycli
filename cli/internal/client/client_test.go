@@ -83,7 +83,10 @@ func TestClient_ProactiveRefresh_ExpiredToken(t *testing.T) {
 	}
 }
 
-func TestClient_ProactiveRefresh_NearExpiry(t *testing.T) {
+// A token that is near expiry but not yet expired is NOT proactively refreshed —
+// refreshes are held to the minRefreshInterval floor, so the still-valid token
+// is used as-is until it actually expires.
+func TestClient_NoProactiveRefresh_NearButNotExpired(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	clearTestTokens()
 
@@ -99,6 +102,9 @@ func TestClient_ProactiveRefresh_NearExpiry(t *testing.T) {
 				ExpiresIn:    3600,
 			})
 		case "/v1/me":
+			if r.Header.Get("Authorization") != "Bearer near-expiry-access" {
+				t.Errorf("expected the near-expiry token to be used, got %q", r.Header.Get("Authorization"))
+			}
 			writeJSON(w, http.StatusOK, map[string]string{"id": "123", "email": "test@example.com"})
 		default:
 			http.NotFound(w, r)
@@ -106,19 +112,18 @@ func TestClient_ProactiveRefresh_NearExpiry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Token expires in 15s — within the 30s buffer
-	saveTestTokens(t, "near-expiry-access", "my-refresh", time.Now().Add(15*time.Second))
+	// Token still valid (expires in 30s) — must not trigger a refresh.
+	saveTestTokens(t, "near-expiry-access", "my-refresh", time.Now().Add(30*time.Second))
 
 	c := New(srv.URL)
 	defer c.Close()
 
-	_, err := c.GetMe()
-	if err != nil {
+	if _, err := c.GetMe(); err != nil {
 		t.Fatalf("GetMe: %v", err)
 	}
 
-	if got := refreshCalls.Load(); got != 1 {
-		t.Errorf("refresh called %d times, want 1", got)
+	if got := refreshCalls.Load(); got != 0 {
+		t.Errorf("refresh called %d times, want 0", got)
 	}
 }
 

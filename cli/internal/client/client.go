@@ -1,17 +1,20 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/gofrs/flock"
 	"resty.dev/v3"
 
 	"mycli.sh/cli/internal/auth"
@@ -69,8 +72,10 @@ func New(baseURL string) *Client {
 			// Skip refresh for API tokens (myc_ prefix) — they don't expire via JWT
 			// and for the refresh request itself (would recurse).
 			if !auth.IsAPIToken(tokens.AccessToken) && !isRefreshRequest(req.URL) {
-				// Proactively refresh if the token is expired or near-expiry (30s buffer).
-				if !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt.Add(-30*time.Second)) {
+				// Proactively refresh once the token has expired. tryRefresh is
+				// throttled to minRefreshInterval, so refreshing earlier would
+				// just be skipped — this keeps refreshes at least that far apart.
+				if !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt) {
 					if ok, _ := c.tryRefresh(); ok {
 						tokens, _ = auth.LoadTokens() // reload after refresh
 					}
@@ -164,39 +169,68 @@ func (c *Client) do(method, path string, reqBody any, out any) error {
 	return nil
 }
 
-// recentRefreshDedup is how recently another goroutine must have refreshed
-// for a queued caller to consider its rotation redundant. Five seconds is long
-// enough to absorb the round-trip of a concurrent refresh but short enough
-// that a server-side rejection (401) still forces a fresh refresh attempt.
-const recentRefreshDedup = 5 * time.Second
+// minRefreshInterval is the floor between token rotations. The access token
+// lives 15 minutes, so a refresh within that window means the current token is
+// still valid — reuse it instead of rotating again. This both throttles refresh
+// traffic and dedupes concurrent refreshers (they see the winner's fresh
+// LastRefreshedAt and skip their own POST).
+const minRefreshInterval = 15 * time.Minute
 
-// tryRefresh refreshes the access token using the stored refresh token. Returns
-// (true, nil) on success, or when another refresher already rotated within
-// recentRefreshDedup while this one waited for globalRefreshMu. On failure
-// returns (false, err) with the underlying refresh error, so callers can tell a
-// dead session (*APIError) from a transient failure.
+// refreshLockTimeout bounds how long we wait for the cross-process refresh lock
+// before proceeding without it, so a stuck peer can never wedge refresh.
+const refreshLockTimeout = 10 * time.Second
+
+func refreshedRecently(t *auth.Tokens) bool {
+	return t != nil && !t.LastRefreshedAt.IsZero() && time.Since(t.LastRefreshedAt) < minRefreshInterval
+}
+
+// acquireRefreshLock takes a cross-process advisory lock so parallel `my`
+// processes serialize their refreshes over the shared credential file. It
+// returns a release func that is always safe to call, and degrades to a no-op
+// if the lock can't be acquired within refreshLockTimeout.
+func acquireRefreshLock() func() {
+	dir := config.DefaultDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return func() {}
+	}
+	fl := flock.New(filepath.Join(dir, "refresh.lock"))
+	ctx, cancel := context.WithTimeout(context.Background(), refreshLockTimeout)
+	defer cancel()
+	if locked, err := fl.TryLockContext(ctx, 50*time.Millisecond); err != nil || !locked {
+		return func() {}
+	}
+	return func() { _ = fl.Unlock() }
+}
+
+// tryRefresh refreshes the access token using the stored refresh token,
+// serialized in-process (globalRefreshMu) and across processes (file lock). If a
+// refresh happened within minRefreshInterval — by this or any parallel process —
+// it reuses the current token instead of rotating. Returns (true, nil) when the
+// stored tokens are valid afterward; (false, err) on a genuine rejection, with
+// err carrying the reason so callers can tell a dead session from a transient
+// failure.
 func (c *Client) tryRefresh() (bool, error) {
 	globalRefreshMu.Lock()
 	defer globalRefreshMu.Unlock()
+
+	unlock := acquireRefreshLock()
+	defer unlock()
 
 	tokens, err := auth.LoadTokens()
 	if err != nil || tokens.RefreshToken == "" {
 		return false, nil
 	}
 
-	// If another refresher just rotated the token, the refresh token we hold
-	// is already stale. Treat as success — the caller will reload tokens.
-	if !tokens.LastRefreshedAt.IsZero() && time.Since(tokens.LastRefreshedAt) < recentRefreshDedup {
+	// Throttle / dedup: a recent rotation means the token is still valid.
+	if refreshedRecently(tokens) {
 		return true, nil
 	}
 
 	refreshResp, err := c.RefreshToken(tokens.RefreshToken)
 	if err != nil || refreshResp.AccessToken == "" {
-		// Another refresher may have rotated the session out from under us.
+		// A parallel refresher may have rotated the session out from under us.
 		// If disk shows a fresh rotation, treat as success so we don't wipe it.
-		if fresh, loadErr := auth.LoadTokens(); loadErr == nil && fresh != nil &&
-			!fresh.LastRefreshedAt.IsZero() &&
-			time.Since(fresh.LastRefreshedAt) < recentRefreshDedup {
+		if fresh, loadErr := auth.LoadTokens(); loadErr == nil && refreshedRecently(fresh) {
 			return true, nil
 		}
 		return false, err
@@ -206,31 +240,12 @@ func (c *Client) tryRefresh() (bool, error) {
 	return true, nil
 }
 
-// RefreshNow forces a refresh, bypassing the near-expiry check. Used by the
-// background keepalive to keep the session alive. Serialized with all other
-// refreshers; returns true on success (including a dedup hit).
+// RefreshNow forces a refresh, used by the background keepalive to keep the
+// session alive. It shares tryRefresh's coordination and throttle; returns true
+// when the stored tokens are valid afterward.
 func (c *Client) RefreshNow() bool {
-	globalRefreshMu.Lock()
-	defer globalRefreshMu.Unlock()
-
-	tokens, err := auth.LoadTokens()
-	if err != nil || tokens.RefreshToken == "" {
-		return false
-	}
-
-	// Another refresher may have rotated the token while we waited for the
-	// lock; avoid re-POSTing an already-stale single-use token.
-	if !tokens.LastRefreshedAt.IsZero() && time.Since(tokens.LastRefreshedAt) < recentRefreshDedup {
-		return true
-	}
-
-	refreshResp, err := c.RefreshToken(tokens.RefreshToken)
-	if err != nil || refreshResp.AccessToken == "" {
-		return false
-	}
-
-	saveRefreshedTokens(tokens, refreshResp)
-	return true
+	ok, _ := c.tryRefresh()
+	return ok
 }
 
 // saveRefreshedTokens applies a successful refresh response onto the loaded

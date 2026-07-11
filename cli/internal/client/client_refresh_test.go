@@ -136,6 +136,55 @@ func TestClient_RefreshNow_DedupGuard(t *testing.T) {
 	}
 }
 
+// TestClient_Throttle_MinRefreshInterval verifies refreshes are held to the
+// minRefreshInterval floor: a rotation within the window is skipped (token still
+// valid), one past the window proceeds.
+func TestClient_Throttle_MinRefreshInterval(t *testing.T) {
+	cases := []struct {
+		name         string
+		lastRefresh  time.Duration // how long ago the last refresh was
+		wantRotation int32
+	}{
+		{"within_interval_skips", 5 * time.Minute, 0},
+		{"past_interval_refreshes", 20 * time.Minute, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			clearTestTokens()
+
+			var rotations atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/auth/refresh" {
+					rotations.Add(1)
+					writeJSON(w, http.StatusOK, auth.TokenResponse{AccessToken: "A1", RefreshToken: "R1", ExpiresIn: 900})
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer srv.Close()
+
+			if err := auth.SaveTokens(&auth.Tokens{
+				AccessToken:     "A0",
+				RefreshToken:    "R0",
+				ExpiresAt:       time.Now().Add(-time.Minute),
+				LastRefreshedAt: time.Now().Add(-tc.lastRefresh),
+			}); err != nil {
+				t.Fatalf("SaveTokens: %v", err)
+			}
+
+			c := New(srv.URL)
+			defer c.Close()
+			if !c.RefreshNow() {
+				t.Error("RefreshNow returned false")
+			}
+			if got := rotations.Load(); got != tc.wantRotation {
+				t.Errorf("rotations = %d, want %d", got, tc.wantRotation)
+			}
+		})
+	}
+}
+
 // TestClient_RetryOn401_TransientFailure_KeepsTokens verifies that a
 // non-definitive refresh failure (network error or 5xx) does NOT wipe
 // credentials — the next invocation can retry.
