@@ -29,6 +29,13 @@ const (
 // command's request middleware.
 var storeMu sync.Mutex
 
+// keyringEnabled reports whether the OS keyring should be used. Setting
+// MY_NO_KEYRING forces the file store (~/.my/credentials.json), which is useful
+// on headless/CI machines where no secure keyring is available.
+func keyringEnabled() bool {
+	return os.Getenv("MY_NO_KEYRING") == ""
+}
+
 type Tokens struct {
 	AccessToken     string    `json:"access_token"`
 	RefreshToken    string    `json:"refresh_token"`
@@ -61,9 +68,11 @@ func SaveTokens(tokens *Tokens) error {
 	defer storeMu.Unlock()
 
 	// Try keyring first
-	if err := keyring.Set(keyringService, keyringUser, string(data)); err == nil {
-		_ = keyring.Delete(legacyKeyringService, legacyKeyringUser) // drop any pre-rename item
-		return nil
+	if keyringEnabled() {
+		if err := keyring.Set(keyringService, keyringUser, string(data)); err == nil {
+			_ = keyring.Delete(legacyKeyringService, legacyKeyringUser) // drop any pre-rename item
+			return nil
+		}
 	}
 
 	// Fall back to file
@@ -89,16 +98,17 @@ func LoadTokens() (*Tokens, error) {
 	storeMu.Lock()
 	defer storeMu.Unlock()
 
-	// Try the keyring first.
-	if data, err := keyring.Get(keyringService, keyringUser); err == nil {
-		return unmarshalTokens(data)
-	}
-
-	// Migrate a legacy keychain item (pre-rename) if one is present.
-	if data, err := keyring.Get(legacyKeyringService, legacyKeyringUser); err == nil {
-		_ = keyring.Set(keyringService, keyringUser, data)
-		_ = keyring.Delete(legacyKeyringService, legacyKeyringUser)
-		return unmarshalTokens(data)
+	if keyringEnabled() {
+		// Try the keyring first.
+		if data, err := keyring.Get(keyringService, keyringUser); err == nil {
+			return unmarshalTokens(data)
+		}
+		// Migrate a legacy keychain item (pre-rename) if one is present.
+		if data, err := keyring.Get(legacyKeyringService, legacyKeyringUser); err == nil {
+			_ = keyring.Set(keyringService, keyringUser, data)
+			_ = keyring.Delete(legacyKeyringService, legacyKeyringUser)
+			return unmarshalTokens(data)
+		}
 	}
 
 	// Fall back to file
@@ -118,8 +128,10 @@ func ClearTokens() error {
 	defer storeMu.Unlock()
 
 	// Try keyring (current + legacy)
-	_ = keyring.Delete(keyringService, keyringUser)
-	_ = keyring.Delete(legacyKeyringService, legacyKeyringUser)
+	if keyringEnabled() {
+		_ = keyring.Delete(keyringService, keyringUser)
+		_ = keyring.Delete(legacyKeyringService, legacyKeyringUser)
+	}
 
 	// Also try file
 	path := filepath.Join(config.DefaultDir(), "credentials.json")
