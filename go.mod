@@ -19,7 +19,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
-	resty.dev/v3 v3.0.0-beta.6
+	resty.dev/v3 v3.0.0-rc.3
 )
 
 require (
