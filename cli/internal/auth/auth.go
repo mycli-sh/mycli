@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"mycli.sh/cli/internal/config"
@@ -12,9 +13,21 @@ import (
 )
 
 const (
-	keyringService = "my-cli"
-	keyringUser    = "tokens"
+	// Keychain identifiers for stored JWT credentials, kept clearly mycli-branded
+	// so the item is recognizable in the OS keychain.
+	keyringService = "mycli"
+	keyringUser    = "mycli-tokens"
+
+	// Legacy identifiers, migrated to the current ones on first read so an
+	// existing login survives the rename.
+	legacyKeyringService = "my-cli"
+	legacyKeyringUser    = "tokens"
 )
+
+// storeMu serializes access to the credential store (keyring / credentials.json)
+// so a background refresh writing tokens can't tear a concurrent read from a
+// command's request middleware.
+var storeMu sync.Mutex
 
 type Tokens struct {
 	AccessToken     string    `json:"access_token"`
@@ -44,8 +57,12 @@ func SaveTokens(tokens *Tokens) error {
 		return err
 	}
 
+	storeMu.Lock()
+	defer storeMu.Unlock()
+
 	// Try keyring first
 	if err := keyring.Set(keyringService, keyringUser, string(data)); err == nil {
+		_ = keyring.Delete(legacyKeyringService, legacyKeyringUser) // drop any pre-rename item
 		return nil
 	}
 
@@ -69,23 +86,40 @@ func LoadTokens() (*Tokens, error) {
 		return &Tokens{AccessToken: token}, nil
 	}
 
-	// Try keyring first
-	data, err := keyring.Get(keyringService, keyringUser)
-	if err == nil {
-		var t Tokens
-		if err := json.Unmarshal([]byte(data), &t); err != nil {
-			return nil, err
-		}
-		return &t, nil
+	storeMu.Lock()
+	defer storeMu.Unlock()
+
+	// Try the keyring first.
+	if data, err := keyring.Get(keyringService, keyringUser); err == nil {
+		return unmarshalTokens(data)
+	}
+
+	// Migrate a legacy keychain item (pre-rename) if one is present.
+	if data, err := keyring.Get(legacyKeyringService, legacyKeyringUser); err == nil {
+		_ = keyring.Set(keyringService, keyringUser, data)
+		_ = keyring.Delete(legacyKeyringService, legacyKeyringUser)
+		return unmarshalTokens(data)
 	}
 
 	// Fall back to file
 	return loadTokensFromFile()
 }
 
+func unmarshalTokens(data string) (*Tokens, error) {
+	var t Tokens
+	if err := json.Unmarshal([]byte(data), &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func ClearTokens() error {
-	// Try keyring
+	storeMu.Lock()
+	defer storeMu.Unlock()
+
+	// Try keyring (current + legacy)
 	_ = keyring.Delete(keyringService, keyringUser)
+	_ = keyring.Delete(legacyKeyringService, legacyKeyringUser)
 
 	// Also try file
 	path := filepath.Join(config.DefaultDir(), "credentials.json")

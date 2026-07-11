@@ -221,8 +221,10 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	newRefreshTokenHash := authservice.HashToken(newRefreshToken)
-	newExpiresAt := time.Now().Add(authservice.RefreshTokenDuration)
-	_ = h.store.UpdateSessionRefreshTokenHash(r.Context(), sess.ID, newRefreshTokenHash, newExpiresAt)
+	now := time.Now()
+	newExpiresAt := now.Add(authservice.RefreshTokenDuration)
+	previousHashValidUntil := now.Add(authservice.RefreshTokenGrace)
+	_ = h.store.UpdateSessionRefreshTokenHash(r.Context(), sess.ID, newRefreshTokenHash, newExpiresAt, previousHashValidUntil)
 
 	slog.Info("auth.refresh",
 		"user_id", userID,

@@ -74,7 +74,7 @@ type AuthStore interface {
 	RevokeSession(ctx context.Context, id uuid.UUID) error
 	GetSessionByTokenHash(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error
-	UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error
+	UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt, previousHashValidUntil time.Time) error
 	CountOTPAttemptsByDeviceCode(ctx context.Context, deviceCode string) (int, error)
 	GetLibraryBySlug(ctx context.Context, slug string) (*model.Library, error)
 }

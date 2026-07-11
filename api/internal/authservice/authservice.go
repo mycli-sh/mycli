@@ -33,6 +33,10 @@ const (
 	RefreshTokenDuration = 60 * 24 * time.Hour
 	AccessTokenTTL       = int(AccessTokenDuration / time.Second)  // seconds, for JSON expires_in
 	RefreshTokenTTL      = int(RefreshTokenDuration / time.Second) // seconds, for JSON refresh_expires_in
+
+	// RefreshTokenGrace is how long the immediately-previous refresh token stays
+	// valid after rotation, so a concurrent/duplicate refresh isn't rejected.
+	RefreshTokenGrace = 30 * time.Second
 )
 
 // Service centralises auth business logic shared across handlers.
@@ -67,7 +71,7 @@ func (s *Service) FindOrCreateUser(ctx context.Context, email string) (*model.Us
 	return user, nil
 }
 
-// IssueTokens generates JWT tokens (access 15m + refresh 30d), revokes any
+// IssueTokens generates JWT tokens (access 15m + refresh 60d), revokes any
 // existing session for the same device, creates a new session, and checks
 // whether the user still needs to set a username.
 func (s *Service) IssueTokens(ctx context.Context, userID uuid.UUID, r *http.Request) (*TokenResult, error) {

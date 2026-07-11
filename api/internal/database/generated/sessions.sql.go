@@ -15,7 +15,7 @@ import (
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at
+RETURNING id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at, previous_refresh_token_hash, previous_hash_valid_until
 `
 
 type CreateSessionParams struct {
@@ -51,16 +51,22 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.PreviousRefreshTokenHash,
+		&i.PreviousHashValidUntil,
 	)
 	return i, err
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at
+SELECT id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at, previous_refresh_token_hash, previous_hash_valid_until
 FROM sessions
-WHERE refresh_token_hash = $1 AND expires_at > NOW()
+WHERE (refresh_token_hash = $1
+       OR (previous_refresh_token_hash = $1 AND previous_hash_valid_until > NOW()))
+  AND expires_at > NOW()
 `
 
+// Matches the current refresh token, or the immediately-previous one while it is
+// still within its reuse-grace window. The session itself must not have expired.
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error) {
 	row := q.db.QueryRow(ctx, getSessionByTokenHash, refreshTokenHash)
 	var i Session
@@ -76,12 +82,14 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, refreshTokenHash st
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.PreviousRefreshTokenHash,
+		&i.PreviousHashValidUntil,
 	)
 	return i, err
 }
 
 const listSessionsByUser = `-- name: ListSessionsByUser :many
-SELECT id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at
+SELECT id, user_id, refresh_token_hash, user_agent, ip_address, device_id, device_name, last_used_at, expires_at, revoked_at, created_at, previous_refresh_token_hash, previous_hash_valid_until
 FROM sessions
 WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
 ORDER BY last_used_at DESC
@@ -108,6 +116,8 @@ func (q *Queries) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]S
 			&i.ExpiresAt,
 			&i.RevokedAt,
 			&i.CreatedAt,
+			&i.PreviousRefreshTokenHash,
+			&i.PreviousHashValidUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -174,16 +184,31 @@ func (q *Queries) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error
 }
 
 const updateSessionRefreshTokenHash = `-- name: UpdateSessionRefreshTokenHash :exec
-UPDATE sessions SET refresh_token_hash = $2, expires_at = $3 WHERE id = $1
+UPDATE sessions
+SET previous_refresh_token_hash = refresh_token_hash,
+    previous_hash_valid_until   = $4,
+    refresh_token_hash          = $2,
+    expires_at                  = $3
+WHERE id = $1
 `
 
 type UpdateSessionRefreshTokenHashParams struct {
-	ID               uuid.UUID          `json:"id"`
-	RefreshTokenHash string             `json:"refresh_token_hash"`
-	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+	ID                     uuid.UUID          `json:"id"`
+	RefreshTokenHash       string             `json:"refresh_token_hash"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+	PreviousHashValidUntil pgtype.Timestamptz `json:"previous_hash_valid_until"`
 }
 
+// Rotates the refresh token, demoting the current hash to previous_refresh_token_hash
+// and keeping it valid until $4 (the reuse-grace deadline). All SET right-hand
+// sides reference the pre-update row, so previous_refresh_token_hash captures the
+// hash being superseded.
 func (q *Queries) UpdateSessionRefreshTokenHash(ctx context.Context, arg UpdateSessionRefreshTokenHashParams) error {
-	_, err := q.db.Exec(ctx, updateSessionRefreshTokenHash, arg.ID, arg.RefreshTokenHash, arg.ExpiresAt)
+	_, err := q.db.Exec(ctx, updateSessionRefreshTokenHash,
+		arg.ID,
+		arg.RefreshTokenHash,
+		arg.ExpiresAt,
+		arg.PreviousHashValidUntil,
+	)
 	return err
 }

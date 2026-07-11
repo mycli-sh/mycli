@@ -52,7 +52,7 @@ The API reads all config from environment variables: `DATABASE_URL`, `PORT`, `JW
 - Database IDs use native PostgreSQL UUIDs (UUIDv7 via `uuidv7()`, Go type `uuid.UUID` from `google/uuid`)
 - Soft deletes on commands (`deleted_at` column)
 - JWT credentials stored in OS keyring with file fallback (`~/.my/credentials.json`); API tokens are read from `MY_API_TOKEN`
-- JWT sessions use a sliding 30-day window: `/v1/auth/refresh` rotates the refresh token AND bumps `sessions.expires_at` to `now() + 30d`. The CLI fires a silent background refresh from root `PersistentPreRun` (`cli/internal/auth/background.go`) when `LastRefreshedAt` is older than 7 days, with a 30-min post-login grace; API tokens skip this path entirely
+- JWT sessions use a sliding 60-day window: `/v1/auth/refresh` rotates the refresh token AND bumps `sessions.expires_at` to `now() + 60d`. Refresh tokens are single-use; the immediately-previous token stays valid for a short reuse grace (`authservice.RefreshTokenGrace`) so a concurrent/duplicate refresh isn't rejected. Refresh across all CLI clients in a process is serialized by a process-global lock (`cli/internal/client`), and the reactive 401 handler only clears credentials on a definitive auth rejection. The CLI fires a silent background refresh from root `PersistentPreRun` (`cli/internal/auth/background.go`) when `LastRefreshedAt` is older than 7 days, with a 30-min post-login grace; API tokens skip this path entirely
 - CLI local history stored as JSONL at `~/.my/history.jsonl`
 - Command slugs must match `^[a-z][a-z0-9-]*$` (also enforced on profile slugs and the cache directory layout)
 - Source repos cloned under `~/.my/sources/repos/` (path derived from URL)

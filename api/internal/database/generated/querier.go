@@ -38,6 +38,8 @@ type Querier interface {
 	GetMagicLinkByOTPHash(ctx context.Context, otpHash *string) (MagicLink, error)
 	GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (MagicLink, error)
 	GetOwnerName(ctx context.Context, id uuid.UUID) (*string, error)
+	// Matches the current refresh token, or the immediately-previous one while it is
+	// still within its reuse-grace window. The session itself must not have expired.
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
@@ -61,6 +63,10 @@ type Querier interface {
 	UpdateCommandMeta(ctx context.Context, arg UpdateCommandMetaParams) error
 	UpdateLibraryLatestVersion(ctx context.Context, arg UpdateLibraryLatestVersionParams) error
 	UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error
+	// Rotates the refresh token, demoting the current hash to previous_refresh_token_hash
+	// and keeping it valid until $4 (the reuse-grace deadline). All SET right-hand
+	// sides reference the pre-update row, so previous_refresh_token_hash captures the
+	// hash being superseded.
 	UpdateSessionRefreshTokenHash(ctx context.Context, arg UpdateSessionRefreshTokenHashParams) error
 }
 

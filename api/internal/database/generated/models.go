@@ -107,17 +107,19 @@ type ProfileLibrary struct {
 }
 
 type Session struct {
-	ID               uuid.UUID          `json:"id"`
-	UserID           uuid.UUID          `json:"user_id"`
-	RefreshTokenHash string             `json:"refresh_token_hash"`
-	UserAgent        string             `json:"user_agent"`
-	IpAddress        string             `json:"ip_address"`
-	DeviceID         string             `json:"device_id"`
-	DeviceName       string             `json:"device_name"`
-	LastUsedAt       pgtype.Timestamptz `json:"last_used_at"`
-	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
-	RevokedAt        *time.Time         `json:"revoked_at"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	ID                       uuid.UUID          `json:"id"`
+	UserID                   uuid.UUID          `json:"user_id"`
+	RefreshTokenHash         string             `json:"refresh_token_hash"`
+	UserAgent                string             `json:"user_agent"`
+	IpAddress                string             `json:"ip_address"`
+	DeviceID                 string             `json:"device_id"`
+	DeviceName               string             `json:"device_name"`
+	LastUsedAt               pgtype.Timestamptz `json:"last_used_at"`
+	ExpiresAt                pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt                *time.Time         `json:"revoked_at"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+	PreviousRefreshTokenHash pgtype.Text        `json:"previous_refresh_token_hash"`
+	PreviousHashValidUntil   pgtype.Timestamptz `json:"previous_hash_valid_until"`
 }
 
 type User struct {
