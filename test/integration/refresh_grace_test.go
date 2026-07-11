@@ -31,10 +31,16 @@ func TestRefreshTokenReuseGrace(t *testing.T) {
 		sum := sha256.Sum256([]byte(tok))
 		return hex.EncodeToString(sum[:])
 	}
+	// jti makes every minted token unique — otherwise tokens built in the same
+	// second share identical claims, hash to the same value, and collide on the
+	// sessions.refresh_token_hash UNIQUE constraint.
+	jti := 0
 	mkRefreshJWT := func(exp time.Duration) string {
+		jti++
 		tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"sub":  userID.String(),
 			"type": "refresh",
+			"jti":  jti,
 			"iat":  time.Now().Unix(),
 			"exp":  time.Now().Add(exp).Unix(),
 		})
@@ -46,7 +52,7 @@ func TestRefreshTokenReuseGrace(t *testing.T) {
 	}
 	// insertSession creates a session row, optionally with a populated previous
 	// token + grace deadline. Returns nothing; refresh_token_hash = hash(cur).
-	insertSession := func(cur string, expiresIn time.Duration, prev string, prevGraceIn time.Duration) {
+	insertSession := func(t *testing.T, cur string, expiresIn time.Duration, prev string, prevGraceIn time.Duration) {
 		t.Helper()
 		var prevHash any
 		var prevUntil any
@@ -62,7 +68,7 @@ func TestRefreshTokenReuseGrace(t *testing.T) {
 			t.Fatalf("insert session: %v", err)
 		}
 	}
-	postRefresh := func(token string) int {
+	postRefresh := func(t *testing.T, token string) int {
 		t.Helper()
 		body, _ := json.Marshal(map[string]string{"refresh_token": token})
 		req, err := http.NewRequestWithContext(ctx, "POST", h.APIURL+"/v1/auth/refresh", bytes.NewReader(body))
@@ -80,14 +86,14 @@ func TestRefreshTokenReuseGrace(t *testing.T) {
 
 	t.Run("grace_replay_accepted", func(t *testing.T) {
 		r0 := mkRefreshJWT(60 * 24 * time.Hour)
-		insertSession(r0, 60*24*time.Hour, "", 0)
+		insertSession(t, r0, 60*24*time.Hour, "", 0)
 
-		if code := postRefresh(r0); code != http.StatusOK {
+		if code := postRefresh(t, r0); code != http.StatusOK {
 			t.Fatalf("first refresh: got %d, want 200", code)
 		}
 		// r0 is now the previous token, within its 30s grace: a duplicate/racing
 		// submission must still succeed instead of wiping the session.
-		if code := postRefresh(r0); code != http.StatusOK {
+		if code := postRefresh(t, r0); code != http.StatusOK {
 			t.Errorf("grace replay: got %d, want 200", code)
 		}
 	})
@@ -95,27 +101,27 @@ func TestRefreshTokenReuseGrace(t *testing.T) {
 	t.Run("previous_token_after_grace_rejected", func(t *testing.T) {
 		cur := mkRefreshJWT(60 * 24 * time.Hour)
 		prev := mkRefreshJWT(60 * 24 * time.Hour)
-		insertSession(cur, 60*24*time.Hour, prev, -time.Minute) // grace already lapsed
+		insertSession(t, cur, 60*24*time.Hour, prev, -time.Minute) // grace already lapsed
 
-		if code := postRefresh(prev); code != http.StatusUnauthorized {
+		if code := postRefresh(t, prev); code != http.StatusUnauthorized {
 			t.Errorf("lapsed previous token: got %d, want 401", code)
 		}
-		if code := postRefresh(cur); code != http.StatusOK {
+		if code := postRefresh(t, cur); code != http.StatusOK {
 			t.Errorf("current token: got %d, want 200", code)
 		}
 	})
 
 	t.Run("unknown_token_rejected", func(t *testing.T) {
-		if code := postRefresh(mkRefreshJWT(60 * 24 * time.Hour)); code != http.StatusUnauthorized {
+		if code := postRefresh(t, mkRefreshJWT(60*24*time.Hour)); code != http.StatusUnauthorized {
 			t.Errorf("unknown token: got %d, want 401", code)
 		}
 	})
 
 	t.Run("expired_session_rejected", func(t *testing.T) {
 		cur := mkRefreshJWT(60 * 24 * time.Hour)
-		insertSession(cur, -time.Hour, "", 0) // session already expired
+		insertSession(t, cur, -time.Hour, "", 0) // session already expired
 
-		if code := postRefresh(cur); code != http.StatusUnauthorized {
+		if code := postRefresh(t, cur); code != http.StatusUnauthorized {
 			t.Errorf("expired session: got %d, want 401", code)
 		}
 	})
