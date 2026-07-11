@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import yaml from "js-yaml";
+import { dump as dumpYaml } from "js-yaml";
 import { Badge } from "../ui/badge";
 import { Card } from "../ui/card";
 import { CopyButton } from "../ui/copy-button";
@@ -272,7 +272,7 @@ function RawSpecSection({ spec }: { spec: SpecJson }) {
 
   const raw =
     format === "yaml"
-      ? yaml.dump(spec, { lineWidth: 120, noRefs: true })
+      ? dumpYaml(spec, { lineWidth: 120, noRefs: true })
       : JSON.stringify(spec, null, 2);
 
   useEffect(() => {
