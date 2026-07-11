@@ -64,7 +64,7 @@ func New(baseURL string) *Client {
 
 	// Retry once on 401 after refreshing the token (JWT only, not API tokens)
 	rc.SetRetryCount(1).
-		DisableRetryDefaultConditions().
+		SetRetryDefaultConditions(false).
 		AddRetryConditions(resty.RetryConditionFunc(func(resp *resty.Response, err error) bool {
 			if err != nil || resp == nil {
 				return false
@@ -115,7 +115,7 @@ func (c *Client) do(method, path string, reqBody any, out any) error {
 		req.SetBody(reqBody)
 	}
 	var errEnv apiErrorEnvelope
-	req.SetError(&errEnv)
+	req.SetResultError(&errEnv)
 	if out != nil {
 		req.SetResult(out)
 	}
@@ -124,7 +124,7 @@ func (c *Client) do(method, path string, reqBody any, out any) error {
 	if err != nil {
 		return err
 	}
-	if resp.IsError() {
+	if resp.IsStatusFailure() {
 		if errEnv.Error.Code != "" {
 			return &errEnv.Error
 		}
@@ -434,7 +434,7 @@ func (c *Client) GetCatalog(etag string, profile ...string) (*CatalogResponse, e
 	}
 	var catalog CatalogResponse
 	var errEnv apiErrorEnvelope
-	req.SetResult(&catalog).SetError(&errEnv)
+	req.SetResult(&catalog).SetResultError(&errEnv)
 
 	path := "/v1/catalog"
 	if len(profile) > 0 && profile[0] != "" {
@@ -449,7 +449,7 @@ func (c *Client) GetCatalog(etag string, profile ...string) (*CatalogResponse, e
 	if resp.StatusCode() == http.StatusNotModified {
 		return nil, nil
 	}
-	if resp.IsError() {
+	if resp.IsStatusFailure() {
 		if errEnv.Error.Code != "" {
 			return nil, &errEnv.Error
 		}
