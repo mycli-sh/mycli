@@ -72,9 +72,8 @@ func New(baseURL string) *Client {
 			// Skip refresh for API tokens (myc_ prefix) — they don't expire via JWT
 			// and for the refresh request itself (would recurse).
 			if !auth.IsAPIToken(tokens.AccessToken) && !isRefreshRequest(req.URL) {
-				// Proactively refresh once the token has expired. tryRefresh is
-				// throttled to minRefreshInterval, so refreshing earlier would
-				// just be skipped — this keeps refreshes at least that far apart.
+				// Proactively refresh once the token has expired (refreshing earlier
+				// would just be skipped by the minRefreshInterval throttle).
 				if !tokens.ExpiresAt.IsZero() && time.Now().After(tokens.ExpiresAt) {
 					if ok, _ := c.tryRefresh(); ok {
 						tokens, _ = auth.LoadTokens() // reload after refresh
@@ -169,11 +168,9 @@ func (c *Client) do(method, path string, reqBody any, out any) error {
 	return nil
 }
 
-// minRefreshInterval is the floor between token rotations. The access token
-// lives 15 minutes, so a refresh within that window means the current token is
-// still valid — reuse it instead of rotating again. This both throttles refresh
-// traffic and dedupes concurrent refreshers (they see the winner's fresh
-// LastRefreshedAt and skip their own POST).
+// minRefreshInterval is the floor between token rotations, matching the access
+// token's lifetime: a refresh within this window means the current token is
+// still valid, so reuse it. Also dedupes concurrent refreshers.
 const minRefreshInterval = 15 * time.Minute
 
 // refreshLockTimeout bounds how long we wait for the cross-process refresh lock
@@ -202,13 +199,10 @@ func acquireRefreshLock() func() {
 	return func() { _ = fl.Unlock() }
 }
 
-// tryRefresh refreshes the access token using the stored refresh token,
-// serialized in-process (globalRefreshMu) and across processes (file lock). If a
-// refresh happened within minRefreshInterval — by this or any parallel process —
-// it reuses the current token instead of rotating. Returns (true, nil) when the
-// stored tokens are valid afterward; (false, err) on a genuine rejection, with
-// err carrying the reason so callers can tell a dead session from a transient
-// failure.
+// tryRefresh refreshes the access token, serialized in-process (globalRefreshMu)
+// and across processes (file lock) and throttled to minRefreshInterval. Returns
+// (true, nil) when the stored tokens are valid afterward; (false, err) on a
+// genuine rejection, so callers can tell a dead session from a transient failure.
 func (c *Client) tryRefresh() (bool, error) {
 	globalRefreshMu.Lock()
 	defer globalRefreshMu.Unlock()

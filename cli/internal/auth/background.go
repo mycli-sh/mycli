@@ -57,8 +57,7 @@ func MaybeRefreshInBackground(refresh func() bool) {
 // WaitForBackgroundRefresh blocks until an in-flight background refresh finishes
 // or the timeout elapses. Called just before process exit so a mid-flight
 // rotation is persisted rather than dropped (which would brick the single-use
-// refresh token). Matters mainly for local-only commands, which otherwise never
-// wait on the client's refresh lock. Returns immediately when nothing is in flight.
+// refresh token). Returns immediately when nothing is in flight.
 func WaitForBackgroundRefresh(timeout time.Duration) {
 	done := make(chan struct{})
 	go func() {
