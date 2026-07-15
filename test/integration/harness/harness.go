@@ -44,6 +44,10 @@ func Start(t *testing.T) *Harness {
 // CLIPath returns the path to the compiled `my` binary.
 func (h *Harness) CLIPath() string { return h.cliPath }
 
+// JWTSecret returns the secret the containerized API signs tokens with, so tests
+// can mint refresh JWTs that the API will accept.
+func (h *Harness) JWTSecret() string { return apiJWTSecret }
+
 func (h *Harness) register(fn func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

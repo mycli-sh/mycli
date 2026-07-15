@@ -38,7 +38,7 @@ type mockAuthStore struct {
 	RevokeSessionFn                  func(ctx context.Context, id uuid.UUID) error
 	GetSessionByTokenHashFn          func(ctx context.Context, tokenHash string) (*model.Session, error)
 	UpdateSessionLastUsedFn          func(ctx context.Context, id uuid.UUID) error
-	UpdateSessionRefreshTokenHashFn  func(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error
+	UpdateSessionRefreshTokenHashFn  func(ctx context.Context, id uuid.UUID, newHash string, expiresAt, previousHashValidUntil time.Time) error
 	CountOTPAttemptsByDeviceCodeFn   func(ctx context.Context, deviceCode string) (int, error)
 	GetLibraryBySlugFn               func(ctx context.Context, slug string) (*model.Library, error)
 }
@@ -122,9 +122,9 @@ func (m *mockAuthStore) GetSessionByTokenHash(ctx context.Context, tokenHash str
 func (m *mockAuthStore) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error {
 	return m.UpdateSessionLastUsedFn(ctx, id)
 }
-func (m *mockAuthStore) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error {
+func (m *mockAuthStore) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt, previousHashValidUntil time.Time) error {
 	if m.UpdateSessionRefreshTokenHashFn != nil {
-		return m.UpdateSessionRefreshTokenHashFn(ctx, id, newHash, expiresAt)
+		return m.UpdateSessionRefreshTokenHashFn(ctx, id, newHash, expiresAt, previousHashValidUntil)
 	}
 	return nil
 }
@@ -657,6 +657,76 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAuthHandler_RefreshToken_PassesGraceDeadline asserts a successful refresh
+// rotates with a sliding 60-day session expiry and a reuse-grace deadline of
+// now + RefreshTokenGrace for the previous token.
+func TestAuthHandler_RefreshToken_PassesGraceDeadline(t *testing.T) {
+	cfg := &config.Config{JWTSecret: "test-secret", BaseURL: "http://localhost:8080"}
+	now := time.Now()
+
+	var gotExpiresAt, gotGraceUntil time.Time
+	ms := &mockAuthStore{}
+	ms.GetSessionByTokenHashFn = func(context.Context, string) (*model.Session, error) {
+		return &model.Session{ID: testSes1, UserID: testUser1, LastUsedAt: now, ExpiresAt: now.Add(authservice.RefreshTokenDuration), CreatedAt: now}, nil
+	}
+	ms.UpdateSessionLastUsedFn = func(context.Context, uuid.UUID) error { return nil }
+	ms.UpdateSessionRefreshTokenHashFn = func(_ context.Context, _ uuid.UUID, _ string, expiresAt, previousHashValidUntil time.Time) error {
+		gotExpiresAt, gotGraceUntil = expiresAt, previousHashValidUntil
+		return nil
+	}
+
+	authSvc := authservice.New(cfg.JWTSecret, ms)
+	h := NewAuthHandler(cfg, ms, &mockEmailSender{}, authSvc)
+	r := chi.NewRouter()
+	r.Post("/auth/refresh", h.RefreshTokenHandler)
+
+	tok, _ := authservice.GenerateJWTToken("test-secret", testUser1.String(), "refresh", authservice.RefreshTokenDuration)
+	req := requestWithUser("POST", "/auth/refresh", map[string]string{"refresh_token": tok}, uuid.Nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if want := time.Now().Add(authservice.RefreshTokenGrace); gotGraceUntil.Sub(want).Abs() > time.Minute {
+		t.Errorf("grace deadline = %v, want ~%v", gotGraceUntil, want)
+	}
+	if want := time.Now().Add(authservice.RefreshTokenDuration); gotExpiresAt.Sub(want).Abs() > time.Minute {
+		t.Errorf("session expiry = %v, want ~%v", gotExpiresAt, want)
+	}
+}
+
+// TestAuthHandler_RefreshToken_ExpiredSession covers the handler's expired-session
+// branch (a session whose expires_at has passed).
+func TestAuthHandler_RefreshToken_ExpiredSession(t *testing.T) {
+	cfg := &config.Config{JWTSecret: "test-secret", BaseURL: "http://localhost:8080"}
+	now := time.Now()
+
+	ms := &mockAuthStore{}
+	ms.GetSessionByTokenHashFn = func(context.Context, string) (*model.Session, error) {
+		return &model.Session{ID: testSes1, UserID: testUser1, LastUsedAt: now, ExpiresAt: now.Add(-time.Hour), CreatedAt: now}, nil
+	}
+
+	authSvc := authservice.New(cfg.JWTSecret, ms)
+	h := NewAuthHandler(cfg, ms, &mockEmailSender{}, authSvc)
+	r := chi.NewRouter()
+	r.Post("/auth/refresh", h.RefreshTokenHandler)
+
+	tok, _ := authservice.GenerateJWTToken("test-secret", testUser1.String(), "refresh", authservice.RefreshTokenDuration)
+	req := requestWithUser("POST", "/auth/refresh", map[string]string{"refresh_token": tok}, uuid.Nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("got status %d, want 401", rec.Code)
+	}
+	var resp errorResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Error.Code != "SESSION_EXPIRED" {
+		t.Errorf("got error code %q, want SESSION_EXPIRED", resp.Error.Code)
 	}
 }
 

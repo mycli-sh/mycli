@@ -558,11 +558,12 @@ func (s *Store) UpdateSessionLastUsed(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt time.Time) error {
+func (s *Store) UpdateSessionRefreshTokenHash(ctx context.Context, id uuid.UUID, newHash string, expiresAt, previousHashValidUntil time.Time) error {
 	if err := s.q.UpdateSessionRefreshTokenHash(ctx, dbgen.UpdateSessionRefreshTokenHashParams{
-		ID:               id,
-		RefreshTokenHash: newHash,
-		ExpiresAt:        pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		ID:                     id,
+		RefreshTokenHash:       newHash,
+		ExpiresAt:              pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		PreviousHashValidUntil: pgtype.Timestamptz{Time: previousHashValidUntil, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("update session refresh token hash: %w", err)
 	}
