@@ -35,6 +35,7 @@ coverage.out
 /command.yaml
 /mycli-libraries/
 scripts/dev-reset.sh
+scripts/local/
 
 # Web frontend
 web/node_modules/
