@@ -128,7 +128,7 @@ type LibraryStore interface {
 	ListVersionsByCommand(ctx context.Context, commandID uuid.UUID) ([]model.CommandVersion, error)
 	CreateOrUpdateLibrary(ctx context.Context, ownerID uuid.UUID, slug, name, description string, gitURL *string, aliases []string) (*model.Library, error)
 	LibraryReleaseExists(ctx context.Context, libraryID uuid.UUID, version string) (bool, error)
-	CreateLibraryRelease(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error)
+	CreateLibraryRelease(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, contentSHA256 *string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error)
 	UpdateLibraryLatestVersion(ctx context.Context, libraryID uuid.UUID, version string) error
 	ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) ([]model.LibraryRelease, error)
 	GetLibraryRelease(ctx context.Context, libraryID uuid.UUID, version string) (*model.LibraryRelease, error)

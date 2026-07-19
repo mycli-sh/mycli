@@ -64,14 +64,15 @@ type Library struct {
 }
 
 type LibraryRelease struct {
-	ID           uuid.UUID          `json:"id"`
-	LibraryID    uuid.UUID          `json:"library_id"`
-	Version      string             `json:"version"`
-	Tag          string             `json:"tag"`
-	CommitHash   string             `json:"commit_hash"`
-	CommandCount int32              `json:"command_count"`
-	ReleasedBy   uuid.UUID          `json:"released_by"`
-	ReleasedAt   pgtype.Timestamptz `json:"released_at"`
+	ID            uuid.UUID          `json:"id"`
+	LibraryID     uuid.UUID          `json:"library_id"`
+	Version       string             `json:"version"`
+	Tag           string             `json:"tag"`
+	CommitHash    string             `json:"commit_hash"`
+	CommandCount  int32              `json:"command_count"`
+	ReleasedBy    uuid.UUID          `json:"released_by"`
+	ReleasedAt    pgtype.Timestamptz `json:"released_at"`
+	ContentSha256 *string            `json:"content_sha256"`
 }
 
 type MagicLink struct {

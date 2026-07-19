@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -444,15 +445,21 @@ func newLibraryReleaseCmd() *cobra.Command {
 		Use:   "release [tag]",
 		Short: "Create a versioned release of all libraries in the manifest",
 		Long: `Create a release from a git tag (e.g., v1.0.0). Reads the manifest and specs
-at the tagged commit and publishes them to the registry. All libraries in the
-manifest are released under the same tag. Requires login.
+at the tagged commit and publishes them to the registry as one atomic call.
+All libraries in the manifest are released under the same tag. Requires login.
 
-When called without a tag, interactively prompts for a version bump.
-When a tag is given that doesn't exist yet, creates it at HEAD before releasing.
-When a tag already exists, publishes from that tag (backward compatible).
+Without a tag argument, prompts interactively for a version bump.
+With a tag that doesn't exist yet, validates everything first and only then
+creates the tag at HEAD.
+With a tag that already exists, publishes from that tag's contents.
 
-Use --push to push the tag to origin after releasing.
-Use --dry-run to preview without making changes.`,
+The release is content-addressable: retrying the same command after any
+partial failure (network blip, killed process, etc.) is safe — matching
+content returns 200 idempotent, differing content returns a distinct error.
+
+Use --push to push the tag to origin after releasing (reliably, even when the
+tag was created in a prior attempt).
+Use --dry-run to preview per-library outcomes without creating anything.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !auth.IsLoggedIn() {
@@ -464,39 +471,17 @@ Use --dry-run to preview without making changes.`,
 				return fmt.Errorf("get working directory: %w", err)
 			}
 
-			var tag string
-			tagCreated := false
+			// 1. Resolve the tag. Do NOT create it here — validation runs first
+			//    so a bad manifest or spec at HEAD never leaves an orphan tag.
+			tag, tagExisted, err := resolveReleaseTag(cwd, args)
+			if err != nil {
+				return err
+			}
 
-			if len(args) == 1 {
-				// Tag provided as argument
-				tag = args[0]
-				if !tagPattern.MatchString(tag) {
-					return fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
-				}
-
-				if library.TagExists(cwd, tag) {
-					// Mode C: existing tag — publish only, skip working tree check
-				} else {
-					// Mode B: tag doesn't exist — create it at HEAD
-					clean, err := library.IsWorkingTreeClean(cwd)
-					if err != nil {
-						return fmt.Errorf("check working tree: %w", err)
-					}
-					if !clean {
-						return fmt.Errorf("working tree has uncommitted changes; commit or stash them first")
-					}
-					if dryRun {
-						fmt.Printf("[dry-run] Would create tag %s at HEAD\n", tag)
-					} else {
-						if err := library.CreateTag(cwd, tag); err != nil {
-							return fmt.Errorf("create tag: %w", err)
-						}
-						fmt.Printf("Created tag %s\n", tag)
-					}
-					tagCreated = true
-				}
-			} else {
-				// Mode A: no argument — interactive prompt
+			// 2. Working-tree check only matters when we're about to base a new
+			//    tag on HEAD. For an existing tag, the release comes from the
+			//    tag ref and the working tree is irrelevant.
+			if !tagExisted {
 				clean, err := library.IsWorkingTreeClean(cwd)
 				if err != nil {
 					return fmt.Errorf("check working tree: %w", err)
@@ -504,101 +489,63 @@ Use --dry-run to preview without making changes.`,
 				if !clean {
 					return fmt.Errorf("working tree has uncommitted changes; commit or stash them first")
 				}
-
-				latest, err := library.LatestSemverTag(cwd)
-				if err != nil {
-					return fmt.Errorf("find latest tag: %w", err)
-				}
-
-				if latest == "" {
-					latest = "v0.0.0"
-					fmt.Println("No existing tags found. Starting from v0.0.0.")
-				} else {
-					fmt.Printf("Latest release: %s\n", latest)
-				}
-
-				patchBump, _ := library.BumpSemver(latest, "patch")
-				minorBump, _ := library.BumpSemver(latest, "minor")
-				majorBump, _ := library.BumpSemver(latest, "major")
-
-				fmt.Println()
-				fmt.Println("Bump to:")
-				fmt.Printf("  1) %s (patch)\n", patchBump)
-				fmt.Printf("  2) %s (minor)\n", minorBump)
-				fmt.Printf("  3) %s (major)\n", majorBump)
-				fmt.Println("  4) Custom")
-				fmt.Println()
-
-				var choice string
-				fmt.Print("Choose [1-4]: ")
-				if _, err := fmt.Scanln(&choice); err != nil {
-					return fmt.Errorf("read input: %w", err)
-				}
-
-				switch strings.TrimSpace(choice) {
-				case "1":
-					tag = patchBump
-				case "2":
-					tag = minorBump
-				case "3":
-					tag = majorBump
-				case "4":
-					fmt.Print("Enter tag (vX.Y.Z): ")
-					if _, err := fmt.Scanln(&tag); err != nil {
-						return fmt.Errorf("read input: %w", err)
-					}
-					tag = strings.TrimSpace(tag)
-					if !tagPattern.MatchString(tag) {
-						return fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
-					}
-				default:
-					return fmt.Errorf("invalid choice %q", choice)
-				}
-
-				if library.TagExists(cwd, tag) {
-					return fmt.Errorf("tag %s already exists; use 'my library release %s' to publish the existing tag", tag, tag)
-				}
-
-				if dryRun {
-					fmt.Printf("[dry-run] Would create tag %s at HEAD\n", tag)
-				} else {
-					if err := library.CreateTag(cwd, tag); err != nil {
-						return fmt.Errorf("create tag: %w", err)
-					}
-					fmt.Printf("Created tag %s\n", tag)
-				}
-				tagCreated = true
 			}
 
-			if dryRun {
-				fmt.Printf("[dry-run] Would publish release %s\n", tag)
-				if pushFlag {
-					fmt.Printf("[dry-run] Would push tag %s to origin\n", tag)
-				}
-				return nil
+			// 3. Archive the commit that will be released (HEAD for new tags,
+			//    the existing tag ref otherwise).
+			ref := "HEAD"
+			if tagExisted {
+				ref = tag
 			}
-
-			// Get commit hash for the tag
-			commitHash, err := library.TagCommitHash(cwd, tag)
-			if err != nil {
-				return fmt.Errorf("get tag commit: %w", err)
-			}
-
-			// Extract tag contents to a temp directory
 			tmpDir, err := os.MkdirTemp("", "my-release-*")
 			if err != nil {
 				return fmt.Errorf("create temp dir: %w", err)
 			}
 			defer func() { _ = os.RemoveAll(tmpDir) }()
 
-			if err := library.ArchiveTag(cwd, tag, tmpDir); err != nil {
-				return fmt.Errorf("extract tag: %w", err)
+			if err := library.ArchiveCommit(cwd, ref, tmpDir); err != nil {
+				return fmt.Errorf("extract %s: %w", ref, err)
 			}
 
-			// Load manifest from the tagged content
+			// 4. Load and validate the manifest.
 			manifest, err := library.LoadManifest(tmpDir)
 			if err != nil {
-				return fmt.Errorf("no valid manifest at tag %s: %w", tag, err)
+				return fmt.Errorf("no valid manifest at %s: %w", ref, err)
+			}
+			if len(manifest.Libraries) == 0 {
+				return fmt.Errorf("manifest declares no libraries")
+			}
+
+			// 5. + 6. Discover specs strictly and build the bundled payload.
+			bundledLibs, err := buildBundledLibraries(tmpDir, manifest)
+			if err != nil {
+				return err
+			}
+
+			// 7. Commit hash & git URL for the record.
+			var commitHash string
+			if tagExisted {
+				commitHash, err = library.TagCommitHash(cwd, tag)
+				if err != nil {
+					return fmt.Errorf("get tag commit: %w", err)
+				}
+			} else {
+				commitHash, err = headCommitHash(cwd)
+				if err != nil {
+					return fmt.Errorf("get HEAD commit: %w", err)
+				}
+			}
+			var gitURL string
+			if remote, err := getGitRemoteURL(cwd); err == nil {
+				gitURL = remote
+			}
+
+			req := &client.CreateBundledReleaseRequest{
+				Tag:        tag,
+				CommitHash: commitHash,
+				GitURL:     gitURL,
+				Namespace:  manifest.Namespace,
+				Libraries:  bundledLibs,
 			}
 
 			cfg, err := config.Load()
@@ -608,79 +555,315 @@ Use --dry-run to preview without making changes.`,
 			c := client.New(resolveAPIURL(cfg))
 			defer c.Close()
 
-			// Detect git remote URL for metadata
-			var gitURL string
-			if remote, err := getGitRemoteURL(cwd); err == nil {
-				gitURL = remote
+			// 8. --dry-run: preview without creating a tag or POSTing.
+			if dryRun {
+				return runReleaseDryRun(c, req, manifest.Namespace, tag)
 			}
 
-			// Release each library in the manifest
-			for libKey, libDef := range manifest.Libraries {
-				items, err := library.DiscoverSpecs(tmpDir, libKey, libDef)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-					continue
+			// 9. Create the tag NOW that everything client-side is validated.
+			if !tagExisted {
+				if err := library.CreateTag(cwd, tag); err != nil {
+					return fmt.Errorf("create tag: %w", err)
 				}
-
-				// Read all spec files as raw JSON
-				var specJSONs []json.RawMessage
-				for _, item := range items {
-					data, err := os.ReadFile(item.SpecPath)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "warning: cannot read %s: %v\n", item.SpecPath, err)
-						continue
-					}
-					jsonData, err := spec.ToJSON(data)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "warning: cannot convert %s to JSON: %v\n", item.SpecPath, err)
-						continue
-					}
-					specJSONs = append(specJSONs, jsonData)
-				}
-
-				req := &client.CreateReleaseRequest{
-					Tag:         tag,
-					CommitHash:  commitHash,
-					Namespace:   manifest.Namespace,
-					Name:        libDef.Name,
-					Description: libDef.Description,
-					GitURL:      gitURL,
-					Aliases:     libDef.Aliases,
-					Commands:    specJSONs,
-				}
-
-				resp, err := c.CreateRelease(libKey, req)
-				if err != nil {
-					// Check for 409 conflict (already released)
-					if apiErr, ok := err.(*client.APIError); ok && apiErr.Code == "RELEASE_EXISTS" {
-						fmt.Printf("Skipped %s %s (already exists)\n", libKey, tag)
-						continue
-					}
-					return fmt.Errorf("failed to release %s: %w", libKey, err)
-				}
-
-				fmt.Printf("Released %s %s (%d commands)\n", libKey, tag, resp.Published)
+				fmt.Printf("Created tag %s\n", tag)
 			}
 
-			// Push tag if requested
-			if pushFlag && tagCreated {
-				fmt.Printf("Pushing tag %s to origin...\n", tag)
-				if err := library.PushTag(cwd, tag); err != nil {
-					return fmt.Errorf("push tag: %w", err)
-				}
-				fmt.Println("Done.")
-			} else if pushFlag && !tagCreated {
-				fmt.Println("Tag already existed; skipping push (push it manually if needed).")
+			// 10. POST the bundle.
+			resp, err := c.CreateBundledRelease(req)
+			if err != nil {
+				printReleaseRecoveryGuidance(tag, commitHash, err)
+				return err
 			}
+			printReleaseSummary(resp)
 
+			// 11. Push. Reliable even for tags that already existed locally.
+			if pushFlag {
+				return ensureTagPushed(cwd, tag)
+			}
+			if !tagExisted {
+				fmt.Printf("Tag %s is local-only. Run 'my library release %s --push' to push it.\n", tag, tag)
+			}
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&pushFlag, "push", false, "push the created tag to origin after releasing")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what would happen without making changes")
+	cmd.Flags().BoolVar(&pushFlag, "push", false, "push the tag to origin after releasing (idempotent — safe to re-run)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview per-library outcomes without creating anything")
 
 	return cmd
+}
+
+// resolveReleaseTag returns the tag to release plus whether it already exists.
+// It never mutates the repo (tag creation happens later, only after everything
+// has been validated).
+func resolveReleaseTag(cwd string, args []string) (string, bool, error) {
+	if len(args) == 1 {
+		tag := args[0]
+		if !tagPattern.MatchString(tag) {
+			return "", false, fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
+		}
+		return tag, library.TagExists(cwd, tag), nil
+	}
+
+	// Interactive: prompt for a semver bump.
+	latest, err := library.LatestSemverTag(cwd)
+	if err != nil {
+		return "", false, fmt.Errorf("find latest tag: %w", err)
+	}
+	if latest == "" {
+		latest = "v0.0.0"
+		fmt.Println("No existing tags found. Starting from v0.0.0.")
+	} else {
+		fmt.Printf("Latest release: %s\n", latest)
+	}
+
+	patchBump, _ := library.BumpSemver(latest, "patch")
+	minorBump, _ := library.BumpSemver(latest, "minor")
+	majorBump, _ := library.BumpSemver(latest, "major")
+
+	fmt.Println()
+	fmt.Println("Bump to:")
+	fmt.Printf("  1) %s (patch)\n", patchBump)
+	fmt.Printf("  2) %s (minor)\n", minorBump)
+	fmt.Printf("  3) %s (major)\n", majorBump)
+	fmt.Println("  4) Custom")
+	fmt.Println()
+
+	var choice string
+	fmt.Print("Choose [1-4]: ")
+	if _, err := fmt.Scanln(&choice); err != nil {
+		return "", false, fmt.Errorf("read input: %w", err)
+	}
+
+	var tag string
+	switch strings.TrimSpace(choice) {
+	case "1":
+		tag = patchBump
+	case "2":
+		tag = minorBump
+	case "3":
+		tag = majorBump
+	case "4":
+		fmt.Print("Enter tag (vX.Y.Z): ")
+		if _, err := fmt.Scanln(&tag); err != nil {
+			return "", false, fmt.Errorf("read input: %w", err)
+		}
+		tag = strings.TrimSpace(tag)
+		if !tagPattern.MatchString(tag) {
+			return "", false, fmt.Errorf("invalid tag format %q (must match vX.Y.Z)", tag)
+		}
+	default:
+		return "", false, fmt.Errorf("invalid choice %q", choice)
+	}
+
+	if library.TagExists(cwd, tag) {
+		return "", false, fmt.Errorf("tag %s already exists; run 'my library release %s' to publish it", tag, tag)
+	}
+	return tag, false, nil
+}
+
+// buildBundledLibraries validates every spec in every library of the manifest
+// and computes each library's canonical content hash. Any failure here — bad
+// spec, empty library, missing directory — halts the release before any
+// state-mutating step, so a broken input never creates an orphan tag.
+func buildBundledLibraries(tmpDir string, manifest *library.Manifest) ([]client.BundledLibraryRelease, error) {
+	// Sort library keys so the request order is deterministic; server hashing
+	// is per-library so this is cosmetic, but stable output helps humans read
+	// the release log.
+	keys := make([]string, 0, len(manifest.Libraries))
+	for k := range manifest.Libraries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]client.BundledLibraryRelease, 0, len(keys))
+	for _, libKey := range keys {
+		libDef := manifest.Libraries[libKey]
+		items, err := library.DiscoverSpecsStrict(tmpDir, libKey, libDef)
+		if err != nil {
+			return nil, fmt.Errorf("library %q: %w", libKey, err)
+		}
+		if len(items) == 0 {
+			return nil, fmt.Errorf("library %q at %s: no command specs found", libKey, libDef.Path)
+		}
+
+		commandBytes := make([]json.RawMessage, 0, len(items))
+		hashEntries := make([]spec.SpecHashEntry, 0, len(items))
+		for _, item := range items {
+			raw, err := os.ReadFile(item.SpecPath)
+			if err != nil {
+				return nil, fmt.Errorf("library %q: read %s: %w", libKey, item.SpecPath, err)
+			}
+			canon, err := spec.CanonicalSpecBytes(raw)
+			if err != nil {
+				return nil, fmt.Errorf("library %q: canonicalize %s: %w", libKey, item.SpecPath, err)
+			}
+			commandBytes = append(commandBytes, canon)
+			hashEntries = append(hashEntries, spec.SpecHashEntry{Slug: item.Slug, Bytes: canon})
+		}
+
+		contentHash := spec.LibraryReleaseHash(spec.LibraryReleaseHashInput{
+			Slug:        libKey,
+			Name:        libDef.Name,
+			Description: libDef.Description,
+			Aliases:     libDef.Aliases,
+			Specs:       hashEntries,
+		})
+
+		out = append(out, client.BundledLibraryRelease{
+			Slug:          libKey,
+			Name:          libDef.Name,
+			Description:   libDef.Description,
+			Aliases:       libDef.Aliases,
+			ContentSHA256: contentHash,
+			Commands:      commandBytes,
+		})
+	}
+	return out, nil
+}
+
+// runReleaseDryRun asks the API what would happen for each library at the
+// requested version. It prints one line per library:
+//
+//	would-create     — no such release yet
+//	would-idempotent — release exists with the same content_sha256
+//	would-conflict   — release exists with different content_sha256
+//	unknown          — API call failed and we can't tell
+func runReleaseDryRun(c *client.Client, req *client.CreateBundledReleaseRequest, namespace, tag string) error {
+	owner, err := dryRunOwner(c, namespace)
+	if err != nil {
+		return err
+	}
+	version := strings.TrimPrefix(tag, "v")
+
+	fmt.Printf("[dry-run] tag %s (namespace: %s, owner: %s)\n", tag, valOrDefault(namespace, "(user)"), owner)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "LIBRARY\tCOMMANDS\tHASH\tSTATUS")
+	for _, lib := range req.Libraries {
+		status := "would-create"
+		existing, err := c.GetLibraryRelease(owner, lib.Slug, version)
+		if err != nil {
+			status = fmt.Sprintf("unknown (%s)", err.Error())
+		} else if existing != nil {
+			switch {
+			case existing.ContentSHA256 == nil:
+				status = "would-conflict (legacy, no hash on record)"
+			case *existing.ContentSHA256 == lib.ContentSHA256:
+				status = "would-idempotent"
+			default:
+				status = "would-conflict"
+			}
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", lib.Slug, len(lib.Commands), shortHash(lib.ContentSHA256), status)
+	}
+	_ = w.Flush()
+	fmt.Println("\n[dry-run] No tag created, nothing published.")
+	return nil
+}
+
+// dryRunOwner picks the owner used to look up existing releases. "system"
+// releases live under the system user; anything else is looked up under the
+// authenticated user's username.
+func dryRunOwner(c *client.Client, namespace string) (string, error) {
+	if namespace == "system" {
+		return "system", nil
+	}
+	me, err := c.GetMe()
+	if err != nil {
+		return "", fmt.Errorf("get current user: %w", err)
+	}
+	if me.Username == nil || *me.Username == "" {
+		return "", fmt.Errorf("your account has no username set (run 'my cli login' to complete setup)")
+	}
+	return *me.Username, nil
+}
+
+func valOrDefault(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
+}
+
+func shortHash(h string) string {
+	if strings.HasPrefix(h, "sha256:") && len(h) >= 7+12 {
+		return h[:7+12] + "…"
+	}
+	return h
+}
+
+func headCommitHash(cwd string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// printReleaseSummary reports what happened per library after a successful
+// bundled release.
+func printReleaseSummary(resp *client.CreateBundledReleaseResponse) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "LIBRARY\tSTATUS\tCOMMANDS")
+	for _, lib := range resp.Libraries {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\n", lib.Slug, lib.Status, lib.PublishedCount)
+	}
+	_ = w.Flush()
+}
+
+// printReleaseRecoveryGuidance tells the user how to retry after a network
+// failure. Because the API is content-addressed, an identical retry is safe
+// even if the previous call actually reached the server.
+func printReleaseRecoveryGuidance(tag, commitHash string, err error) {
+	if apiErr, ok := err.(*client.APIError); ok {
+		// Deterministic API errors (validation, conflict, stale) aren't
+		// retry-recoverable — no guidance would help.
+		switch apiErr.Code {
+		case "RELEASE_CONTENT_MISMATCH", "RELEASE_STALE", "HASH_MISMATCH",
+			"INVALID_REQUEST", "INVALID_TAG", "INVALID_SLUG", "INVALID_SPEC",
+			"EMPTY_LIBRARY", "FORBIDDEN":
+			return
+		}
+	}
+	fmt.Fprintf(os.Stderr, "\nRelease did not complete. The tag %s references commit %s locally.\n", tag, commitHash)
+	fmt.Fprintf(os.Stderr, "Retry with:  my library release %s --push\n", tag)
+	fmt.Fprintln(os.Stderr, "Releases are content-addressed, so an identical retry is safe.")
+}
+
+// ensureTagPushed pushes the tag to origin when it's missing there, is a no-op
+// when the remote already has it pointing at the same commit, and refuses to
+// overwrite when the remote points somewhere else. A network error on the
+// ls-remote check falls back to attempting the push — better than leaving a
+// successful release with the tag stuck locally.
+func ensureTagPushed(cwd, tag string) error {
+	localSHA, err := library.TagCommitHash(cwd, tag)
+	if err != nil {
+		return fmt.Errorf("get local tag commit: %w", err)
+	}
+	remoteSHA, exists, err := library.RemoteTagInfo(cwd, tag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not check remote tag (%v); attempting push anyway\n", err)
+		return pushTag(cwd, tag)
+	}
+	if !exists {
+		return pushTag(cwd, tag)
+	}
+	if !strings.EqualFold(remoteSHA, localSHA) {
+		return fmt.Errorf("tag %s exists on origin at commit %s but local tag points to %s; refusing to overwrite (delete or move the tag manually if this is intentional)", tag, remoteSHA, localSHA)
+	}
+	fmt.Printf("Tag %s already on origin (commit %s).\n", tag, remoteSHA[:min(len(remoteSHA), 12)])
+	return nil
+}
+
+func pushTag(cwd, tag string) error {
+	fmt.Printf("Pushing tag %s to origin...\n", tag)
+	if err := library.PushTag(cwd, tag); err != nil {
+		return fmt.Errorf("push tag: %w", err)
+	}
+	fmt.Println("Done.")
+	return nil
 }
 
 func getGitRemoteURL(dir string) (string, error) {

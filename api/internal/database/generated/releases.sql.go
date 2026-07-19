@@ -12,18 +12,19 @@ import (
 )
 
 const createLibraryRelease = `-- name: CreateLibraryRelease :one
-INSERT INTO library_releases (library_id, version, tag, commit_hash, command_count, released_by)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, library_id, version, tag, commit_hash, command_count, released_by, released_at
+INSERT INTO library_releases (library_id, version, tag, commit_hash, command_count, released_by, content_sha256)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, library_id, version, tag, commit_hash, command_count, released_by, released_at, content_sha256
 `
 
 type CreateLibraryReleaseParams struct {
-	LibraryID    uuid.UUID `json:"library_id"`
-	Version      string    `json:"version"`
-	Tag          string    `json:"tag"`
-	CommitHash   string    `json:"commit_hash"`
-	CommandCount int32     `json:"command_count"`
-	ReleasedBy   uuid.UUID `json:"released_by"`
+	LibraryID     uuid.UUID `json:"library_id"`
+	Version       string    `json:"version"`
+	Tag           string    `json:"tag"`
+	CommitHash    string    `json:"commit_hash"`
+	CommandCount  int32     `json:"command_count"`
+	ReleasedBy    uuid.UUID `json:"released_by"`
+	ContentSha256 *string   `json:"content_sha256"`
 }
 
 func (q *Queries) CreateLibraryRelease(ctx context.Context, arg CreateLibraryReleaseParams) (LibraryRelease, error) {
@@ -34,6 +35,7 @@ func (q *Queries) CreateLibraryRelease(ctx context.Context, arg CreateLibraryRel
 		arg.CommitHash,
 		arg.CommandCount,
 		arg.ReleasedBy,
+		arg.ContentSha256,
 	)
 	var i LibraryRelease
 	err := row.Scan(
@@ -45,12 +47,13 @@ func (q *Queries) CreateLibraryRelease(ctx context.Context, arg CreateLibraryRel
 		&i.CommandCount,
 		&i.ReleasedBy,
 		&i.ReleasedAt,
+		&i.ContentSha256,
 	)
 	return i, err
 }
 
 const getLibraryRelease = `-- name: GetLibraryRelease :one
-SELECT id, library_id, version, tag, commit_hash, command_count, released_by, released_at
+SELECT id, library_id, version, tag, commit_hash, command_count, released_by, released_at, content_sha256
 FROM library_releases
 WHERE library_id = $1 AND version = $2
 `
@@ -72,6 +75,7 @@ func (q *Queries) GetLibraryRelease(ctx context.Context, arg GetLibraryReleasePa
 		&i.CommandCount,
 		&i.ReleasedBy,
 		&i.ReleasedAt,
+		&i.ContentSha256,
 	)
 	return i, err
 }
@@ -93,7 +97,7 @@ func (q *Queries) LibraryReleaseExists(ctx context.Context, arg LibraryReleaseEx
 }
 
 const listLibraryReleases = `-- name: ListLibraryReleases :many
-SELECT id, library_id, version, tag, commit_hash, command_count, released_by, released_at
+SELECT id, library_id, version, tag, commit_hash, command_count, released_by, released_at, content_sha256
 FROM library_releases
 WHERE library_id = $1
 ORDER BY released_at DESC
@@ -117,6 +121,7 @@ func (q *Queries) ListLibraryReleases(ctx context.Context, libraryID uuid.UUID) 
 			&i.CommandCount,
 			&i.ReleasedBy,
 			&i.ReleasedAt,
+			&i.ContentSha256,
 		); err != nil {
 			return nil, err
 		}

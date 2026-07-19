@@ -1,15 +1,11 @@
 package handler
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,7 +14,6 @@ import (
 	"mycli.sh/api/internal/middleware"
 	"mycli.sh/api/internal/model"
 	"mycli.sh/api/internal/store"
-	"mycli.sh/pkg/spec"
 )
 
 var systemUserID = uuid.MustParse("00000000-0000-7000-8000-000000000001")
@@ -124,196 +119,6 @@ func (h *LibraryHandler) GetDetail(w http.ResponseWriter, r *http.Request) {
 		"owner":     ownerName,
 		"commands":  cmds,
 		"installed": installed,
-	})
-}
-
-// publishCommands publishes command specs to a library, creating or updating commands as needed.
-// Returns the count of published commands, the slugs of all published commands, and any error.
-func (h *LibraryHandler) publishCommands(ctx context.Context, s store.LibraryStore, userID, libraryID uuid.UUID, commands []json.RawMessage) (int, []string, error) {
-	published := 0
-	var slugs []string
-	for _, cmdJSON := range commands {
-		parsed, err := spec.Parse(cmdJSON)
-		if err != nil {
-			continue
-		}
-
-		cmdSlug := parsed.Metadata.Slug
-		tags, _ := json.Marshal(parsed.Metadata.Tags)
-		if parsed.Metadata.Tags == nil {
-			tags = []byte("[]")
-		}
-
-		// Get or create the command under this library
-		cmd, err := s.GetCommandByLibraryAndSlug(ctx, libraryID, cmdSlug)
-		if err != nil {
-			cmd, err = s.CreateCommandForLibrary(ctx, userID, libraryID, parsed.Metadata.Name, cmdSlug, parsed.Metadata.Description, tags)
-			if err != nil {
-				continue
-			}
-		} else {
-			// Sync metadata from latest spec
-			_ = s.UpdateCommandMeta(ctx, cmd.ID, parsed.Metadata.Name, parsed.Metadata.Description, tags)
-		}
-
-		hash, err := spec.Hash(parsed)
-		if err != nil {
-			continue
-		}
-
-		// Skip if identical to latest
-		if existingHash, err := s.GetLatestHashByCommand(ctx, cmd.ID); err == nil && existingHash == hash {
-			published++
-			slugs = append(slugs, cmdSlug)
-			continue
-		}
-
-		nextVersion := 1
-		if latest, err := s.GetLatestVersionByCommand(ctx, cmd.ID); err == nil {
-			nextVersion = latest.Version + 1
-		}
-
-		if _, err := s.CreateVersion(ctx, cmd.ID, nextVersion, cmdJSON, hash, "Published via library release", userID); err != nil {
-			continue
-		}
-		published++
-		slugs = append(slugs, cmdSlug)
-	}
-	return published, slugs, nil
-}
-
-// CreateRelease handles POST /v1/libraries/{slug}/releases
-func (h *LibraryHandler) CreateRelease(w http.ResponseWriter, r *http.Request) {
-	slug := chi.URLParam(r, "slug")
-	userID := middleware.GetUserID(r.Context())
-
-	var req struct {
-		Tag         string            `json:"tag"`
-		CommitHash  string            `json:"commit_hash"`
-		Namespace   string            `json:"namespace"`
-		Name        string            `json:"name"`
-		Description string            `json:"description"`
-		GitURL      string            `json:"git_url"`
-		Aliases     []string          `json:"aliases"`
-		Commands    []json.RawMessage `json:"commands"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
-		return
-	}
-
-	if req.Tag == "" || req.Name == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "tag and name are required")
-		return
-	}
-
-	if !tagPattern.MatchString(req.Tag) {
-		writeError(w, http.StatusBadRequest, "INVALID_TAG", "tag must match vX.Y.Z format")
-		return
-	}
-
-	if !slugPattern.MatchString(slug) {
-		writeError(w, http.StatusBadRequest, "INVALID_SLUG", "slug must match ^[a-z][a-z0-9-]*$")
-		return
-	}
-
-	// Validate all command specs
-	for i, cmdJSON := range req.Commands {
-		if err := spec.Validate(cmdJSON); err != nil {
-			writeError(w, http.StatusBadRequest, "INVALID_SPEC", "command "+strconv.Itoa(i)+": "+err.Error())
-			return
-		}
-	}
-
-	// Determine the owner ID for the library
-	ownerID := userID
-	if req.Namespace == "system" {
-		user, err := h.store.GetUserByID(r.Context(), userID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to look up user")
-			return
-		}
-		if !h.cfg.IsSystemAdmin(user.Email) {
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "not authorized to release to system namespace")
-			return
-		}
-		ownerID = systemUserID
-	}
-
-	version := strings.TrimPrefix(req.Tag, "v")
-
-	var gitURL *string
-	if req.GitURL != "" {
-		gitURL = &req.GitURL
-	}
-
-	// Run all mutating operations inside a single transaction
-	var (
-		release   *model.LibraryRelease
-		published int
-	)
-	if err := h.store.WithTx(r.Context(), func(tx store.LibraryStore) error {
-		// Upsert library
-		lib, err := tx.CreateOrUpdateLibrary(r.Context(), ownerID, slug, req.Name, req.Description, gitURL, req.Aliases)
-		if err != nil {
-			return fmt.Errorf("create library: %w", err)
-		}
-
-		// Check if release already exists
-		exists, err := tx.LibraryReleaseExists(r.Context(), lib.ID, version)
-		if err != nil {
-			return fmt.Errorf("check release: %w", err)
-		}
-		if exists {
-			writeError(w, http.StatusConflict, "RELEASE_EXISTS", "version "+version+" already exists")
-			return nil
-		}
-
-		// Publish commands (use ownerID for library ownership, userID for audit trail)
-		var publishedSlugs []string
-		published, publishedSlugs, err = h.publishCommands(r.Context(), tx, ownerID, lib.ID, req.Commands)
-		if err != nil {
-			return fmt.Errorf("publish commands: %w", err)
-		}
-
-		// Soft-delete commands removed from this release
-		if allCmds, err := tx.ListCommandsByLibrary(r.Context(), lib.ID); err == nil {
-			publishedSet := make(map[string]bool, len(publishedSlugs))
-			for _, s := range publishedSlugs {
-				publishedSet[s] = true
-			}
-			for _, cmd := range allCmds {
-				if !publishedSet[cmd.Slug] {
-					_ = tx.SoftDeleteCommand(r.Context(), cmd.CommandID)
-				}
-			}
-		}
-
-		// Create release record (releasedBy = real user for audit trail)
-		release, err = tx.CreateLibraryRelease(r.Context(), lib.ID, version, req.Tag, req.CommitHash, published, userID)
-		if err != nil {
-			return fmt.Errorf("create release: %w", err)
-		}
-
-		// Update latest version
-		if err := tx.UpdateLibraryLatestVersion(r.Context(), lib.ID, version); err != nil {
-			return fmt.Errorf("update latest version: %w", err)
-		}
-
-		return nil
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create release")
-		return
-	}
-
-	// release is nil when we wrote an error response inside the tx (e.g. duplicate)
-	if release == nil {
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"release":   release,
-		"published": published,
 	})
 }
 

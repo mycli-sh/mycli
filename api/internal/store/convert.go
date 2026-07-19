@@ -105,13 +105,14 @@ func toModelLibrary(l dbgen.Library) model.Library {
 
 func toModelLibraryRelease(r dbgen.LibraryRelease) model.LibraryRelease {
 	return model.LibraryRelease{
-		ID:           r.ID,
-		LibraryID:    r.LibraryID,
-		Version:      r.Version,
-		Tag:          r.Tag,
-		CommitHash:   r.CommitHash,
-		CommandCount: int(r.CommandCount),
-		ReleasedBy:   r.ReleasedBy,
-		ReleasedAt:   tsToTime(r.ReleasedAt),
+		ID:            r.ID,
+		LibraryID:     r.LibraryID,
+		Version:       r.Version,
+		Tag:           r.Tag,
+		CommitHash:    r.CommitHash,
+		CommandCount:  int(r.CommandCount),
+		ReleasedBy:    r.ReleasedBy,
+		ReleasedAt:    tsToTime(r.ReleasedAt),
+		ContentSHA256: r.ContentSha256,
 	}
 }

@@ -708,14 +708,15 @@ func (s *Store) UpdateLibraryLatestVersion(ctx context.Context, libraryID uuid.U
 // Library Releases
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateLibraryRelease(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error) {
+func (s *Store) CreateLibraryRelease(ctx context.Context, libraryID uuid.UUID, version, tag, commitHash string, contentSHA256 *string, commandCount int, releasedBy uuid.UUID) (*model.LibraryRelease, error) {
 	r, err := s.q.CreateLibraryRelease(ctx, dbgen.CreateLibraryReleaseParams{
-		LibraryID:    libraryID,
-		Version:      version,
-		Tag:          tag,
-		CommitHash:   commitHash,
-		CommandCount: int32(commandCount),
-		ReleasedBy:   releasedBy,
+		LibraryID:     libraryID,
+		Version:       version,
+		Tag:           tag,
+		CommitHash:    commitHash,
+		CommandCount:  int32(commandCount),
+		ReleasedBy:    releasedBy,
+		ContentSha256: contentSHA256,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create library release: %w", err)

@@ -58,6 +58,10 @@ sql:
             go_type:
               type: "string"
               pointer: true
+          - column: "library_releases.content_sha256"
+            go_type:
+              type: "string"
+              pointer: true
           # Nullable TIMESTAMPTZ -> *time.Time
           - column: "commands.deleted_at"
             go_type:

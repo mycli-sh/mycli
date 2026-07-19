@@ -9,8 +9,8 @@ import (
 //
 // Defaults match the largest realistic payload for the route group:
 //   - DefaultBodyLimitBytes covers token/profile/command bodies (KB at most).
-//   - ReleaseBodyLimitBytes covers POST /v1/libraries/{slug}/releases which
-//     bundles many command specs.
+//   - ReleaseBodyLimitBytes covers POST /v1/releases which bundles many
+//     libraries, each with many command specs.
 //
 // Keep CLI-side constants (see cli/internal/client/client.go) in sync.
 const (

@@ -68,6 +68,7 @@ func main() {
 	catalogHandler := handler.NewCatalogHandler(s)
 	meHandler := handler.NewMeHandler(s)
 	libraryHandler := handler.NewLibraryHandler(cfg, s)
+	releaseHandler := handler.NewReleaseHandler(cfg, s)
 	sessionHandler := handler.NewSessionHandler(s)
 	tokenHandler := handler.NewTokenHandler(s)
 	profileHandler := handler.NewProfileHandler(s)
@@ -176,9 +177,10 @@ func main() {
 		// Catalog
 		r.Get("/v1/catalog", catalogHandler.GetCatalog)
 
-		// Libraries — releases bundle many specs, so allow a larger body.
+		// Releases — atomic bundled publish. Larger body limit to accommodate
+		// multiple libraries with many specs each.
 		r.With(middleware.BodyLimit(middleware.ReleaseBodyLimitBytes)).
-			Post("/v1/libraries/{slug}/releases", libraryHandler.CreateRelease)
+			Post("/v1/releases", releaseHandler.CreateBundled)
 
 		// Profiles
 		r.Post("/v1/profiles", profileHandler.Create)

@@ -117,8 +117,23 @@ func LoadManifest(repoPath string) (*Manifest, error) {
 }
 
 // DiscoverSpecs walks a library directory and returns valid command specs.
-// It validates each spec using pkg/spec.Parse and checks that the filename matches the slug.
+// It validates each spec using pkg/spec.Parse and checks that the filename
+// matches the slug. Bad specs are skipped with a warning printed to stderr —
+// use DiscoverSpecsStrict from the release path so problems surface as errors
+// before any tag or release is created.
 func DiscoverSpecs(repoPath string, libKey string, libDef LibraryDef) ([]CatalogItem, error) {
+	return discoverSpecs(repoPath, libKey, libDef, false)
+}
+
+// DiscoverSpecsStrict is like DiscoverSpecs but any spec that fails to read,
+// parse, validate, or whose filename doesn't match its slug is returned as an
+// error instead of being skipped. This is what the release command uses so a
+// broken spec at the tagged commit halts the release before mutating state.
+func DiscoverSpecsStrict(repoPath string, libKey string, libDef LibraryDef) ([]CatalogItem, error) {
+	return discoverSpecs(repoPath, libKey, libDef, true)
+}
+
+func discoverSpecs(repoPath, libKey string, libDef LibraryDef, strict bool) ([]CatalogItem, error) {
 	libDir := filepath.Join(repoPath, libDef.Path)
 	entries, err := os.ReadDir(libDir)
 	if err != nil {
@@ -138,18 +153,26 @@ func DiscoverSpecs(repoPath string, libKey string, libDef LibraryDef) ([]Catalog
 		specPath := filepath.Join(libDir, entry.Name())
 		data, err := os.ReadFile(specPath)
 		if err != nil {
+			if strict {
+				return nil, fmt.Errorf("read %s: %w", specPath, err)
+			}
 			fmt.Fprintf(os.Stderr, "warning: cannot read %s: %v\n", specPath, err)
 			continue
 		}
 
 		s, err := spec.Parse(data)
 		if err != nil {
+			if strict {
+				return nil, fmt.Errorf("invalid spec %s: %w", specPath, err)
+			}
 			fmt.Fprintf(os.Stderr, "warning: invalid spec %s: %v\n", specPath, err)
 			continue
 		}
 
-		// Filename (minus extension) must match the spec's slug
 		if s.Metadata.Slug != slug {
+			if strict {
+				return nil, fmt.Errorf("%s: spec slug %q does not match filename %q", specPath, s.Metadata.Slug, slug)
+			}
 			fmt.Fprintf(os.Stderr, "warning: %s slug %q doesn't match filename %q, skipping\n",
 				specPath, s.Metadata.Slug, slug)
 			continue

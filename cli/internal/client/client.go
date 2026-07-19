@@ -564,29 +564,51 @@ func (c *Client) GetPublicLibrary(owner, slug string) (*PublicLibraryDetail, err
 	return &resp, nil
 }
 
-type CreateReleaseRequest struct {
-	Tag         string            `json:"tag"`
-	CommitHash  string            `json:"commit_hash"`
-	Namespace   string            `json:"namespace,omitempty"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	GitURL      string            `json:"git_url,omitempty"`
-	Aliases     []string          `json:"aliases,omitempty"`
-	Commands    []json.RawMessage `json:"commands"`
+// BundledLibraryRelease is one library's slice of a bundled release request.
+// The client hashes canonical spec bytes and puts them in `Commands` verbatim;
+// the server hashes what it receives (no re-marshaling) so ContentSHA256
+// stays byte-for-byte in agreement across the wire.
+type BundledLibraryRelease struct {
+	Slug          string            `json:"slug"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description,omitempty"`
+	Aliases       []string          `json:"aliases,omitempty"`
+	ContentSHA256 string            `json:"content_sha256"`
+	Commands      []json.RawMessage `json:"commands"`
 }
 
-type CreateReleaseResponse struct {
-	Release   LibraryReleaseInfo `json:"release"`
-	Published int                `json:"published"`
+// CreateBundledReleaseRequest is the payload for POST /v1/releases — one call
+// publishes every library in the manifest atomically at a single tag.
+type CreateBundledReleaseRequest struct {
+	Tag        string                  `json:"tag"`
+	CommitHash string                  `json:"commit_hash"`
+	GitURL     string                  `json:"git_url,omitempty"`
+	Namespace  string                  `json:"namespace,omitempty"`
+	Libraries  []BundledLibraryRelease `json:"libraries"`
+}
+
+// BundledLibraryReleaseResult is the per-library outcome the server reports.
+// Status is "created" or "idempotent".
+type BundledLibraryReleaseResult struct {
+	Slug           string `json:"slug"`
+	ReleaseID      string `json:"release_id"`
+	PublishedCount int    `json:"published_count"`
+	Status         string `json:"status"`
+}
+
+type CreateBundledReleaseResponse struct {
+	Tag       string                        `json:"tag"`
+	Libraries []BundledLibraryReleaseResult `json:"libraries"`
 }
 
 type LibraryReleaseInfo struct {
-	ID           string `json:"id"`
-	Version      string `json:"version"`
-	Tag          string `json:"tag"`
-	CommitHash   string `json:"commit_hash"`
-	CommandCount int    `json:"command_count"`
-	ReleasedAt   string `json:"released_at"`
+	ID            string  `json:"id"`
+	Version       string  `json:"version"`
+	Tag           string  `json:"tag"`
+	CommitHash    string  `json:"commit_hash"`
+	CommandCount  int     `json:"command_count"`
+	ReleasedAt    string  `json:"released_at"`
+	ContentSHA256 *string `json:"content_sha256,omitempty"`
 }
 
 // MaxReleaseBodyBytes mirrors api/internal/middleware.ReleaseBodyLimitBytes.
@@ -594,7 +616,12 @@ type LibraryReleaseInfo struct {
 // users get a clear message instead of a wire-level 413.
 const MaxReleaseBodyBytes = 4 * 1024 * 1024
 
-func (c *Client) CreateRelease(slug string, req *CreateReleaseRequest) (*CreateReleaseResponse, error) {
+// CreateBundledRelease publishes every library in the manifest atomically at
+// one tag. The server accepts the payload only if the per-library
+// content_sha256 values match what it recomputes from the received spec bytes
+// (HASH_MISMATCH otherwise), and rejects any library whose tag is older than
+// its stored latest_version (RELEASE_STALE).
+func (c *Client) CreateBundledRelease(req *CreateBundledReleaseRequest) (*CreateBundledReleaseResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal release body: %w", err)
@@ -605,11 +632,30 @@ func (c *Client) CreateRelease(slug string, req *CreateReleaseRequest) (*CreateR
 			len(body), MaxReleaseBodyBytes,
 		)
 	}
-	var resp CreateReleaseResponse
-	if err := c.do("POST", "/v1/libraries/"+slug+"/releases", req, &resp); err != nil {
+	var resp CreateBundledReleaseResponse
+	if err := c.do("POST", "/v1/releases", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// GetLibraryRelease fetches an existing library release, used by --dry-run to
+// distinguish would-create / would-idempotent / would-conflict. Returns nil
+// on 404 so callers can treat "no such release" as "would-create" without
+// special-casing error types.
+func (c *Client) GetLibraryRelease(owner, slug, version string) (*LibraryReleaseInfo, error) {
+	var resp struct {
+		Release LibraryReleaseInfo `json:"release"`
+	}
+	path := fmt.Sprintf("/v1/libraries/%s/%s/releases/%s", owner, slug, version)
+	if err := c.do("GET", path, nil, &resp); err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.Code == "NOT_FOUND" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &resp.Release, nil
 }
 
 type ListReleasesResponse struct {

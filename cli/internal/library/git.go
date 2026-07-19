@@ -143,14 +143,61 @@ func IsWorkingTreeClean(repoDir string) (bool, error) {
 
 // ArchiveTag extracts the contents of a git tag to destDir using git archive.
 func ArchiveTag(repoDir, tag, destDir string) error {
+	return ArchiveCommit(repoDir, tag, destDir)
+}
+
+// ArchiveCommit extracts the contents of any git ref (tag, commit hash, HEAD)
+// to destDir. Used by the release path to inspect the exact tree that will be
+// released before creating the tag, so validation failures can abort without
+// leaving an orphan tag behind.
+func ArchiveCommit(repoDir, ref, destDir string) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("git archive %s | tar -x -C %s", tag, destDir))
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("git archive %s | tar -x -C %s", ref, destDir))
 	cmd.Dir = repoDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git archive failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+// RemoteTagInfo asks origin whether the given tag exists there, and if so its
+// SHA. exists=false with err=nil means the ls-remote succeeded and there is no
+// such tag on the remote. Any transport error is returned in err.
+func RemoteTagInfo(repoDir, tag string) (sha string, exists bool, err error) {
+	cmd := exec.Command("git", "ls-remote", "origin", "refs/tags/"+tag)
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_SSH_COMMAND=ssh -oBatchMode=yes",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", false, fmt.Errorf("git ls-remote failed: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	line := strings.TrimSpace(string(out))
+	if line == "" {
+		return "", false, nil
+	}
+	// Output line format: "<sha>\trefs/tags/<tag>". An annotated tag also emits
+	// a "<sha>\trefs/tags/<tag>^{}" line; the peeled sha is what we want to
+	// compare against the local tag's commit hash.
+	var peeled, plain string
+	for _, l := range strings.Split(line, "\n") {
+		fields := strings.Fields(l)
+		if len(fields) < 2 {
+			continue
+		}
+		if strings.HasSuffix(fields[1], "^{}") {
+			peeled = fields[0]
+		} else {
+			plain = fields[0]
+		}
+	}
+	if peeled != "" {
+		return peeled, true, nil
+	}
+	return plain, true, nil
 }
