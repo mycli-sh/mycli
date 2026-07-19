@@ -63,7 +63,7 @@ make dev
 | `library search <query>` | Search public libraries |
 | `library explore` | Interactive TUI for browsing libraries |
 | `library info <identifier>` | Show library details |
-| `library release [tag]` | Create a versioned release from a git tag (interactive if omitted) |
+| `library release [tag]` | Publish every library in the manifest at one tag (atomic + content-addressed — safe to retry after any partial failure). Interactive semver prompt if `[tag]` is omitted. |
 
 > Libraries are now scoped to **profiles**. `install`/`uninstall`/`sync` operate on the currently active profile (defaults to `default`).
 
@@ -145,8 +145,8 @@ To run non-interactively, export the raw token: `export MY_API_TOKEN=myc_…`. T
 | `source add` | `--ref` | Git branch or tag to checkout |
 | `source add` | `--name` | Alias for the source (defaults to repo name) |
 | `library list` | `--json` | Output as JSON |
-| `library release` | `--push` | Push the created tag to origin after releasing |
-| `library release` | `--dry-run` | Preview what would happen without making changes |
+| `library release` | `--push` | Push the tag to origin after releasing (safe to re-run — checks remote SHA and no-ops if already pushed) |
+| `library release` | `--dry-run` | Preview per-library outcomes (would-create / would-idempotent / would-conflict) without creating a tag or publishing |
 
 ## Command Spec Format
 
@@ -349,7 +349,7 @@ make dev                      # Build and start on :8080
 | `POST` | `/v1/commands/{id}/versions` | Publish a version |
 | `GET` | `/v1/commands/{id}/versions/{version}` | Get a specific version |
 | `GET` | `/v1/catalog` | Get synced catalog (supports ETag). Scope with `?profile=<slug>` or via an API token's `profile_id`. |
-| `POST` | `/v1/libraries/{slug}/releases` | Create a release (body limit: 4 MiB) |
+| `POST` | `/v1/releases` | Publish every library in a manifest atomically at one tag. Content-addressed for safe retries: matching hash returns `idempotent`, differing hash returns `RELEASE_CONTENT_MISMATCH`, older-than-latest tag returns `RELEASE_STALE`. Body limit: 4 MiB. |
 | `POST` | `/v1/profiles` | Create a profile |
 | `GET` | `/v1/profiles` | List profiles |
 | `GET` | `/v1/profiles/{slug}` | Get a profile + its libraries |
